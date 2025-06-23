@@ -1,0 +1,11 @@
+fastapi
+uvicorn[standard]
+celery
+redis
+psycopg2-binary
+sqlalchemy
+pydantic[email]
+python-multipart
+pillow
+img2pdf
+PyPDF2
