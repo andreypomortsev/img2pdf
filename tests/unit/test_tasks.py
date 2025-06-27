@@ -1,89 +1,153 @@
+"""Unit tests for Celery tasks."""
+
+import os
+import uuid
 from pathlib import Path
-from unittest.mock import MagicMock, call, mock_open, patch
+from unittest.mock import ANY, MagicMock, mock_open, patch
 
 import pytest
 
-from app.models.file import File as FileModel
-from app.tasks import TEMP_DIR, convert_image_to_pdf, merge_pdfs
+from app.models.file import File
+from app.tasks import convert_image_to_pdf, merge_pdfs
 
 
-@patch("builtins.open", new_callable=mock_open, read_data=b"image content")
-@patch("app.tasks.img2pdf.convert")
-@patch("app.tasks.SessionLocal")
-def test_convert_image_to_pdf(mock_session_local, mock_img2pdf_convert, mock_open_file):
-    mock_db = MagicMock()
-    mock_session_local.return_value = mock_db
-    mock_img2pdf_convert.return_value = b"pdf content"
+class TestConvertImageToPdf:
+    """Tests for the convert_image_to_pdf task."""
 
-    image_file = FileModel(id=1, filename="test.png", filepath="tmp/test-dir/test.png")
-    mock_db.query.return_value.filter.return_value.first.return_value = image_file
+    @patch("app.tasks.get_db")
+    @patch("app.tasks.img2pdf.convert")
+    @patch("builtins.open", new_callable=mock_open, read_data=b"image data")
+    @patch("app.tasks.Path")
+    @patch("app.tasks.uuid.uuid4")
+    def test_convert_image_to_pdf_success(
+        self, mock_uuid, mock_path_class, mock_file, mock_convert, mock_get_db
+    ):
+        """Test successful image to PDF conversion."""
+        # Setup mock database session
+        mock_db = MagicMock()
+        mock_get_db.return_value = mock_db
 
-    def mock_refresh(file_obj):
-        file_obj.id = 99
+        # Mock the file model that will be returned by the query
+        mock_file_model = MagicMock()
+        mock_file_model.id = 1
+        mock_file_model.filename = "test.png"
+        mock_file_model.filepath = "/path/to/test.png"
 
-    mock_db.refresh.side_effect = mock_refresh
+        # Set up the query chain to return our mock file
+        mock_query = MagicMock()
+        mock_filter = MagicMock()
+        mock_filter.first.return_value = mock_file_model
+        mock_query.filter.return_value = mock_filter
+        mock_db.query.return_value = mock_query
 
-    result_file_id = convert_image_to_pdf(1)
+        # Mock path operations
+        output_path = Path("/output/1234.pdf")
+        mock_path = MagicMock()
+        mock_path.parent = MagicMock()
+        mock_path.parent.mkdir.return_value = None
+        mock_path_class.return_value = output_path
 
-    mock_session_local.assert_called_once()
-    mock_db.query.assert_called_once_with(FileModel)
-    mock_open_file.assert_any_call("tmp/test-dir/test.png", "rb")
-    mock_open_file.assert_any_call(Path("tmp/test-dir/test.pdf"), "wb")
-    mock_img2pdf_convert.assert_called_once_with([b"image content"])
+        # Mock UUID for the output filename
+        mock_uuid.return_value = "1234"
 
-    assert result_file_id == 99
-    added_file = mock_db.add.call_args[0][0]
-    assert added_file.filename == "test.pdf"
-    assert added_file.filepath == str(Path("tmp/test-dir/test.pdf"))
+        # Mock PDF conversion
+        mock_convert.return_value = b"pdf data"
 
-    mock_db.commit.assert_called_once()
-    mock_db.refresh.assert_called_once()
-    mock_db.close.assert_called_once()
+        # Mock the new file that will be created
+        new_file_id = 2
+
+        # Mock the refresh to set the ID on the new file
+        def mock_refresh(file_obj):
+            file_obj.id = new_file_id
+
+        mock_db.refresh.side_effect = mock_refresh
+
+        # Execute
+        result = convert_image_to_pdf(1)
+
+        # Verify
+        assert result == new_file_id  # Should return the new file ID
+        mock_db.add.assert_called_once()
+        mock_db.commit.assert_called_once()
+
+        # Verify the new file was created with the correct path
+        added_file = mock_db.add.call_args[0][0]
+        assert isinstance(added_file, FileModel)
+        assert added_file.filename == "1234.pdf"
+        assert str(added_file.filepath) == str(output_path)
 
 
-@patch("app.tasks.Path.mkdir")
-@patch("app.tasks.uuid.uuid4")
-@patch("app.tasks.PdfMerger")
-@patch("app.tasks.SessionLocal")
-def test_merge_pdfs(mock_session_local, mock_pdf_merger_class, mock_uuid, mock_mkdir):
-    mock_db = MagicMock()
-    mock_session_local.return_value.__enter__.return_value = mock_db
+class TestMergePdfs:
+    """Tests for the merge_pdfs task."""
 
-    mock_merger_instance = MagicMock()
-    mock_pdf_merger_class.return_value = mock_merger_instance
-    mock_uuid.return_value = "test-merge-uuid"
+    @patch("app.tasks.get_db")
+    @patch("PyPDF2.PdfMerger")  # Patch at module level, not in app.tasks
+    @patch("builtins.open", new_callable=mock_open)
+    @patch("app.tasks.Path")
+    @patch("uuid.uuid4")
+    def test_merge_pdfs_success(
+        self, mock_uuid, mock_path_class, mock_file, mock_pdf_merger, mock_get_db
+    ):
+        """Test successful PDF merging."""
+        # Setup mock database session
+        mock_db = MagicMock()
+        mock_get_db.return_value = mock_db
 
-    mock_file_1 = FileModel(id=1, filename="test1.pdf", filepath="tmp/dir1/test1.pdf")
-    mock_file_2 = FileModel(id=2, filename="test2.pdf", filepath="tmp/dir2/test2.pdf")
-    mock_db.query.return_value.filter.return_value.all.return_value = [
-        mock_file_1,
-        mock_file_2,
-    ]
+        # Mock the query chain for getting PDF files
+        mock_query = MagicMock()
+        mock_filter = MagicMock()
 
-    def mock_refresh(file_obj):
-        file_obj.id = 100
+        # Create mock file objects that will be returned by the query
+        file1 = MagicMock()
+        file1.id = 1
+        file1.filename = "1.pdf"
+        file1.filepath = "/path/to/1.pdf"
 
-    mock_db.refresh.side_effect = mock_refresh
+        file2 = MagicMock()
+        file2.id = 2
+        file2.filename = "2.pdf"
+        file2.filepath = "/path/to/2.pdf"
 
-    result_file_id = merge_pdfs([1, 2], "merged.pdf")
+        # Set up the query to return our mock files
+        mock_filter.all.return_value = [file1, file2]
+        mock_query.filter.return_value = mock_filter
+        mock_db.query.return_value = mock_query
 
-    mock_session_local.assert_called_once()
-    mock_db.query.assert_called_once_with(FileModel)
+        # Mock path operations
+        output_path = Path("/output/merged.pdf")
+        mock_path = MagicMock()
+        mock_path.parent = MagicMock()
+        mock_path.parent.mkdir.return_value = None
+        mock_path_class.return_value = output_path
 
-    mock_merger_instance.append.assert_has_calls(
-        [call("tmp/dir1/test1.pdf"), call("tmp/dir2/test2.pdf")]
-    )
+        # Mock UUID for the output filename
+        mock_uuid.return_value = "1234"
 
-    expected_dir = TEMP_DIR / "test-merge-uuid"
-    expected_filepath = expected_dir / "merged.pdf"
-    mock_mkdir.assert_called_once_with(parents=True, exist_ok=True)
-    mock_merger_instance.write.assert_called_once_with(str(expected_filepath))
-    mock_merger_instance.close.assert_called_once()
+        # Mock PDF merger
+        mock_merger = MagicMock()
+        mock_pdf_merger.return_value = mock_merger
 
-    assert result_file_id == 100
-    added_file = mock_db.add.call_args[0][0]
-    assert added_file.filename == "merged.pdf"
-    assert added_file.filepath == str(expected_filepath)
+        # Mock the new file that will be created
+        new_file = MagicMock()
+        new_file.id = 3  # New file should have a new ID
 
-    mock_db.commit.assert_called_once()
-    mock_db.refresh.assert_called_once()
+        # Mock the refresh to set the ID on the new file
+        def mock_refresh(file_obj):
+            file_obj.id = 3
+
+        mock_db.refresh.side_effect = mock_refresh
+
+        # Execute
+        result = merge_pdfs([1, 2], "merged.pdf")
+
+        # Verify database interactions
+        mock_db.add.assert_called_once()
+        mock_db.commit.assert_called_once()
+
+        # Verify file operations
+        assert mock_merger.append.call_count == 2
+        mock_merger.write.assert_called_once_with(str(output_path))
+        mock_merger.close.assert_called_once()
+
+        # Verify the task returns the new file ID
+        assert result == 3

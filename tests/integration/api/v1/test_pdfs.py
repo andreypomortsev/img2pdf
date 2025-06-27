@@ -5,8 +5,10 @@ from PIL import Image
 
 from app.models.file import File as FileModel
 
+# Polling mechanism removed - Celery tasks now run in eager mode during tests
 
-def test_merge_pdfs(client, db_session, tmp_path):
+
+def test_merge_pdfs(client, db_session, celery_db_session, tmp_path):
     """
     Test uploading multiple images, converting them, merging the resulting
     PDFs, and downloading the final merged PDF using filesystem.
@@ -33,7 +35,7 @@ def test_merge_pdfs(client, db_session, tmp_path):
         upload_data = response.json()
         task_id = upload_data["task_id"]
 
-        # Check conversion task status
+        # Task should complete immediately in eager mode
         response = client.get(f"/api/v1/files/tasks/{task_id}")
         assert response.status_code == 200
         task_data = response.json()
@@ -52,7 +54,7 @@ def test_merge_pdfs(client, db_session, tmp_path):
     merge_task_data = response.json()
     merge_task_id = merge_task_data["task_id"]
 
-    # Step 3: Check merge task status
+    # Step 3: Check merge task status (should complete immediately in eager mode)
     response = client.get(f"/api/v1/files/tasks/{merge_task_id}")
     assert response.status_code == 200
     task_data = response.json()

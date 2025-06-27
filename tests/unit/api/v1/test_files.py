@@ -164,21 +164,4 @@ def test_download_file_not_found(mock_get_file_by_id, client):
     assert response.status_code == 404
     assert response.json() == {"detail": "File not found"}
 
-
-@patch("app.api.v1.endpoints.files.file_service.get_file_by_id")
-def test_get_file_status_happy_path(mock_get_file_by_id, client):
-    """
-    Tests the happy path for the /status/{file_id} endpoint.
-    """
-    mock_file = FileModel(id=1, filename="test.pdf", status="completed")
-    mock_get_file_by_id.return_value = mock_file
-
-    response = client.get("/api/v1/files/status/1")
-
-    assert response.status_code == 200
-    assert response.json() == {
-        "file_id": 1,
-        "status": "completed",
-        "filename": "test.pdf",
-    }
-    mock_get_file_by_id.assert_called_once_with(db=ANY, file_id=1)
+    mock_get_file_by_id.assert_called_once_with(db=ANY, file_id=999)

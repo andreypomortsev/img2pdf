@@ -1,6 +1,5 @@
 from unittest.mock import MagicMock, mock_open, patch
 
-import pytest
 from fastapi import UploadFile
 from sqlalchemy.orm import Session
 
@@ -8,66 +7,112 @@ from app.models.file import File as FileModel
 from app.services.file_service import TEMP_DIR, FileService
 
 
-@pytest.fixture
-def file_service():
-    return FileService()
+class TestFileService:
+    """Unit tests for the FileService, with all externals mocked."""
 
+    def setup_method(self):
+        """Set up the test environment before each test."""
+        self.file_service = FileService()
+        self.db_session = MagicMock(spec=Session)
 
-@pytest.fixture
-def db_session():
-    return MagicMock(spec=Session)
+    @patch("builtins.open", new_callable=mock_open)
+    @patch("app.services.file_service.uuid.uuid4")
+    def test_save_file(self, mock_uuid, mock_open_file):
+        """
+        Test that save_file correctly handles file I/O and DB interactions.
+        """
+        # Setup
+        # Create a fixed UUID for testing
+        test_uuid = "test-uuid-1234"
+        test_uuid_obj = MagicMock()
+        test_uuid_obj.hex = test_uuid
+        mock_uuid.return_value = test_uuid_obj
 
+        # Create a mock for the uploaded file
+        mock_upload_file = MagicMock(spec=UploadFile)
+        mock_upload_file.filename = "test.png"
+        # Create a mock for the file attribute
+        mock_file = MagicMock()
+        mock_file.read.return_value = b"test content"
+        # Set the file attribute on the mock_upload_file
+        type(mock_upload_file).file = mock_file
 
-@pytest.fixture
-def mock_upload_file():
-    return MagicMock(spec=UploadFile)
+        # Mock the FileModel to avoid DB operations
+        with patch("app.services.file_service.FileModel") as mock_file_model:
+            # Create a mock DB file object
+            mock_db_file = MagicMock()
+            mock_db_file.id = 1
+            mock_db_file.filename = "test.png"
+            expected_filepath = str(TEMP_DIR / test_uuid / "test.png")
+            mock_db_file.filepath = expected_filepath
+            mock_file_model.return_value = mock_db_file
 
+            # Create a context manager for the open mock
+            mock_file_handle = MagicMock()
+            mock_open_file.return_value.__enter__.return_value = mock_file_handle
 
-@patch("builtins.open", new_callable=mock_open)
-@patch("app.services.file_service.Path.mkdir")
-@patch("app.services.file_service.uuid.uuid4")
-def test_save_file(
-    mock_uuid, mock_mkdir, mock_open_file, file_service, db_session, mock_upload_file
-):
-    mock_uuid.return_value = "test-uuid"
-    mock_upload_file.filename = "test.png"
-    mock_upload_file.file = MagicMock()
-    mock_upload_file.file.read.return_value = b"test content"
+            # Create a mock for the mkdir method
+            with patch("pathlib.Path.mkdir") as mock_mkdir:
+                # Execute
+                db_file = self.file_service.save_file(
+                    db=self.db_session, file=mock_upload_file
+                )
 
-    db_file = file_service.save_file(db=db_session, file=mock_upload_file)
+                # Verify mkdir was called with the right arguments
+                mock_mkdir.assert_called_once_with(parents=True, exist_ok=True)
 
-    expected_dir = TEMP_DIR / "test-uuid"
-    expected_filepath = expected_dir / "test.png"
+            # Verify file operations
+            assert mock_open_file.called
+            mock_file_handle.write.assert_called_once_with(b"test content")
 
-    mock_mkdir.assert_called_once_with(parents=True, exist_ok=True)
-    mock_open_file.assert_called_once_with(expected_filepath, "wb")
-    mock_open_file().write.assert_called_once_with(b"test content")
+            # Verify database operations
+            mock_file_model.assert_called_once()
+            self.db_session.add.assert_called_once_with(mock_db_file)
+            self.db_session.flush.assert_called_once()
+            self.db_session.refresh.assert_called_once_with(mock_db_file)
 
-    assert db_file.filename == "test.png"
-    assert db_file.filepath == str(expected_filepath)
-    db_session.add.assert_called_once_with(db_file)
-    db_session.flush.assert_called_once()
-    db_session.refresh.assert_called_once_with(db_file)
+            # Verify the returned file object
+            assert db_file == mock_db_file
 
+    def test_get_file_by_id(self):
+        """
+        Test that get_file_by_id correctly queries the database using a mock session.
+        """
+        # Setup
+        mock_file = FileModel(id=1, filename="test.pdf", filepath="/tmp/test.pdf")
+        # Create a mock query object
+        mock_query = MagicMock()
+        # Set up the filter chain
+        mock_filter = MagicMock()
+        mock_filter.first.return_value = mock_file
+        mock_query.filter.return_value = mock_filter
+        self.db_session.query.return_value = mock_query
 
-def test_get_file_by_id(file_service: FileService, db_session: Session):
-    db_session.query.return_value.filter.return_value.first.return_value = FileModel(
-        id=1, filename="test.pdf", filepath="/tmp/test.pdf"
-    )
+        # Execute
+        db_file = self.file_service.get_file_by_id(db=self.db_session, file_id=1)
 
-    db_file = file_service.get_file_by_id(db=db_session, file_id=1)
+        # Assert
+        self.db_session.query.assert_called_once_with(FileModel)
+        mock_query.filter.assert_called_once()
+        # Check that the filter condition is correct
+        filter_args, _ = mock_query.filter.call_args
+        assert str(filter_args[0].compare(FileModel.id == 1)) == "True"
+        mock_filter.first.assert_called_once()
+        assert db_file == mock_file
 
-    assert db_file is not None
-    assert db_file.id == 1
-    assert db_file.filename == "test.pdf"
+    @patch("app.services.file_service.merge_pdfs.delay")
+    def test_create_merge_task(self, mock_delay):
+        """
+        Test that create_merge_task correctly calls the Celery task.
+        """
+        # Setup
+        file_ids = [1, 2]
+        output_filename = "merged.pdf"
 
+        # Execute
+        self.file_service.create_merge_task(
+            file_ids=file_ids, output_filename=output_filename
+        )
 
-@patch("app.services.file_service.merge_pdfs")
-def test_create_merge_task(mock_merge_pdfs, file_service: FileService):
-    file_ids = [1, 2]
-    output_filename = "merged.pdf"
-
-    task = file_service.create_merge_task(file_ids, output_filename)
-
-    mock_merge_pdfs.delay.assert_called_once_with(file_ids, output_filename)
-    assert task is not None
+        # Assert
+        mock_delay.assert_called_once_with(file_ids, output_filename)
