@@ -2,6 +2,7 @@ fastapi
 uvicorn[standard]
 celery[redis]
 SQLAlchemy
+psycopg2-binary
 img2pdf
 PyPDF2
 pytest
@@ -9,3 +10,8 @@ pytest-cov
 httpx
 python-multipart
 alembic
+python-jose[cryptography]
+passlib[bcrypt]
+python-multipart
+python-dotenv
+email-validator

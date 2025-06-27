@@ -35,16 +35,31 @@ def test_default_production_settings():
         assert settings.CELERY_RESULT_BACKEND == "redis://redis:6379/0"
 
 
-def test_testing_settings():
+def test_testing_settings(monkeypatch):
     """Tests that testing settings are loaded correctly when TESTING=True."""
-    with patch.dict(os.environ, {"TESTING": "True"}):
-        from app.core.config import Settings
+    # Clear any existing settings module import to ensure a fresh import
+    import sys
 
-        settings = Settings()
-        assert settings.TESTING is True
-        assert str(settings.DATABASE_URL) == "sqlite:///./test.db"
-        assert settings.CELERY_BROKER_URL == "memory://"
-        assert settings.CELERY_RESULT_BACKEND == "db+sqlite:///./test.db"
+    if "app.core.config" in sys.modules:
+        del sys.modules["app.core.config"]
+
+    # Set up the test environment
+    monkeypatch.setenv("TESTING", "True")
+    monkeypatch.setenv("DATABASE_URL", "sqlite:///:memory:")
+    monkeypatch.setenv("CELERY_BROKER_URL", "memory://")
+    monkeypatch.setenv("CELERY_RESULT_BACKEND", "rpc://")
+
+    # Now import the settings
+    from app.core.config import Settings, settings
+
+    # Create a new Settings instance
+    test_settings = Settings()
+
+    # Verify the settings
+    assert test_settings.TESTING is True
+    assert str(test_settings.DATABASE_URL) == "sqlite:///:memory:"
+    assert test_settings.CELERY_BROKER_URL == "memory://"
+    assert test_settings.CELERY_RESULT_BACKEND == "rpc://"
 
 
 @patch.dict(

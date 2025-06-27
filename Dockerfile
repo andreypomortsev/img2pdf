@@ -6,14 +6,31 @@ FROM python:3.9-slim-buster
 # Set the working directory in the container
 WORKDIR /app
 
-# Copy the requirements file into the container at /app
-COPY ./requirements.txt /app/requirements.txt
+# Set environment variables
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1 \
+    PIP_NO_CACHE_DIR=1
 
-# Install any needed packages specified in requirements.txt
-RUN pip install --no-cache-dir --upgrade -r /app/requirements.txt
+# Install system dependencies
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    build-essential \
+    wget \
+    && rm -rf /var/lib/apt/lists/*
 
-# Copy the rest of the application's code into the container at /app
-COPY . /app
+# Copy requirements files
+COPY requirements*.txt ./
 
-# Command to run the uvicorn server
-CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--reload"]
+# Install production dependencies first
+RUN pip install --no-cache-dir --upgrade pip && \
+    pip install --no-cache-dir -r requirements.txt
+
+# Install test dependencies if requirements-dev.txt exists
+RUN if [ -f requirements-dev.txt ]; then \
+    pip install --no-cache-dir -r requirements-dev.txt; \
+    fi
+
+# Copy the application code
+COPY . .
+
+# Command to run the uvicorn server (can be overridden in docker-compose)
+CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
