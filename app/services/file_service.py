@@ -1,6 +1,7 @@
 import logging
 import uuid
 from pathlib import Path
+from typing import Optional
 
 from fastapi import UploadFile
 from sqlalchemy.orm import Session
@@ -48,7 +49,7 @@ class FileService:
 
             raise
 
-    def get_file_by_id(self, db: Session, file_id: int) -> FileModel | None:
+    def get_file_by_id(self, db: Session, file_id: int) -> Optional[FileModel]:
         logger.info("Fetching file with id %s from database", file_id)
         try:
             db_file = db.query(FileModel).filter(FileModel.id == file_id).first()
