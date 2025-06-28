@@ -82,6 +82,7 @@ def create_app() -> FastAPI:
 
 app = create_app()
 
+
 @app.get("/api/v1/health", status_code=200)
 async def health_check() -> dict:
     """Health check endpoint for load balancers and monitoring."""
