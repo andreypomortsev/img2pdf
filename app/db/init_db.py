@@ -10,27 +10,31 @@ from app.schemas.token import UserCreate
 def init_db() -> None:
     """
     Initialize the database with initial data.
-    
+
     This function creates database tables if they don't exist and creates
     an initial superuser if it doesn't exist.
     """
     # Get the engine
     engine = get_engine()
-    
+
     # Create tables
     Base.metadata.create_all(bind=engine)
-    
+
     # Create a database session
     db = Session(bind=engine)
-    
+
     try:
         # Skip if we're in testing mode or if the first superuser is not configured
-        if settings.TESTING or not settings.FIRST_SUPERUSER_EMAIL or not settings.FIRST_SUPERUSER_PASSWORD:
+        if (
+            settings.TESTING
+            or not settings.FIRST_SUPERUSER_EMAIL
+            or not settings.FIRST_SUPERUSER_PASSWORD
+        ):
             return
-        
+
         # Check if the user already exists
         user = crud.get_user_by_email(db, email=settings.FIRST_SUPERUSER_EMAIL)
-        
+
         if not user:
             # Create first superuser
             user_in = UserCreate(
