@@ -1,5 +1,3 @@
-from typing import Generator, Optional
-
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
@@ -28,7 +26,7 @@ def get_session_local():
     return _SessionLocal()
 
 
-def get_db() -> Generator:
+def get_db():
     """Dependency for getting async DB session."""
     db = get_session_local()
     try:
