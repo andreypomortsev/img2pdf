@@ -47,6 +47,9 @@ class Settings:
     def DATABASE_URL(self, value: str) -> None:
         self._database_url = value
 
+    # File upload settings
+    UPLOAD_FOLDER: str = os.getenv("UPLOAD_FOLDER", "uploads")
+
     # Production Celery settings (will be patched for tests)
     CELERY_BROKER_URL: str = os.getenv("CELERY_BROKER_URL", "redis://redis:6379/0")
     CELERY_RESULT_BACKEND: str = os.getenv(
