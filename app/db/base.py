@@ -1,22 +1,26 @@
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any
 
-from sqlalchemy import Column, DateTime, Integer
-from sqlalchemy.ext.declarative import as_declarative, declared_attr
+from sqlalchemy import DateTime
+from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 
 
-@as_declarative()
-class Base:
-    id: Any
-    __name__: str
+class Base(DeclarativeBase):
+    """Base class for all SQLAlchemy models."""
 
     # Generate __tablename__ automatically
-    @declared_attr
     def __tablename__(cls) -> str:
         return cls.__name__.lower()
 
-    # Common columns
-    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
-    updated_at = Column(
-        DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False
+    # Common columns with type annotations
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        default=lambda: datetime.now(timezone.utc),
+        nullable=False,
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        default=lambda: datetime.now(timezone.utc),
+        onupdate=lambda: datetime.now(timezone.utc),
+        nullable=False,
     )
