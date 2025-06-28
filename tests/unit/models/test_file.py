@@ -1,10 +1,11 @@
 """Tests for the File model."""
+
 from datetime import datetime
 
 import pytest
 from sqlalchemy.exc import IntegrityError
 
-from app.models import File, User
+from app.models.file import File
 
 
 def test_file_creation(db_session, test_user):
@@ -101,18 +102,32 @@ def test_file_update_timestamps(db_session, test_user):
     )
     db_session.add(file)
     db_session.commit()
-    
+    db_session.refresh(file)
+
     created_at = file.created_at
     updated_at = file.updated_at
-    
+
+    # Ensure we have different timestamps by adding a small delay
+    import time
+
+    time.sleep(1.1)  # Sleep for more than a second to ensure timestamp changes
+
     # Update file
     file.filename = "updated.txt"
     db_session.commit()
     db_session.refresh(file)
-    
-    # Created at should not change, updated at should be newer
-    assert file.created_at == created_at
-    assert file.updated_at > updated_at
+
+    # Created at should not change
+    assert file.created_at == created_at, "created_at should not change after update"
+
+    # Convert datetimes to timestamps (seconds since epoch) for comparison
+    updated_at_ts = updated_at.timestamp()
+    new_updated_at_ts = file.updated_at.timestamp()
+
+    # Updated at should be newer (with at least 1 second difference due to our sleep)
+    assert (
+        new_updated_at_ts > updated_at_ts
+    ), f"updated_at should increase after update (was {updated_at}, now {file.updated_at})"
 
 
 def test_file_soft_delete(db_session, test_user):
@@ -126,13 +141,18 @@ def test_file_soft_delete(db_session, test_user):
     )
     db_session.add(file)
     db_session.commit()
-    
-    # Soft delete
-    file.is_deleted = True
+    db_session.refresh(file)
+
+    # Verify initial state
+    assert file.is_deleted is False
+    assert file.deleted_at is None
+
+    # Soft delete using the delete method
+    file.delete()
     db_session.commit()
     db_session.refresh(file)
-    
-    # Should have deleted_at set
+
+    # Verify soft delete was successful
     assert file.is_deleted is True
     assert file.deleted_at is not None
     assert isinstance(file.deleted_at, datetime)
