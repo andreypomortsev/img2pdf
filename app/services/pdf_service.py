@@ -74,7 +74,7 @@ def convert_image_to_pdf(db: Session, file_id: int, owner_id: int) -> File:
         owner_id=owner_id,
     )
 
-    db_file = File(**file_data.dict())
+    db_file = File(**file_data.model_dump())
     db.add(db_file)
     db.commit()
     db.refresh(db_file)
@@ -168,7 +168,7 @@ def merge_pdfs(
             owner_id=owner_id,
         )
 
-        db_file = File(**file_data.dict())
+        db_file = File(**file_data.model_dump())
         db.add(db_file)
         db.commit()
         db.refresh(db_file)

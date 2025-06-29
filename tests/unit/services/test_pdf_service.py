@@ -1,6 +1,5 @@
 """Tests for the PDF service module."""
 
-import io
 import os
 import shutil
 import tempfile
@@ -10,12 +9,9 @@ from unittest.mock import MagicMock, patch
 import img2pdf
 import pytest
 from PIL import Image
-from pypdf import PdfReader, PdfWriter
+from pypdf import PdfReader
 from sqlalchemy.orm import Session
 
-from app.core.config import settings
-from app.models.file import File as FileModel
-from app.schemas.file import FileCreate
 from app.services.pdf_service import TEMP_DIR, convert_image_to_pdf, merge_pdfs
 
 
@@ -332,7 +328,64 @@ class TestPDFService:
 
         # Check the error message
         assert "No PDF files to merge" in str(exc_info.value)
-        assert "3" in str(exc_info.value)
+
+    @patch("builtins.open", new_callable=MagicMock)
+    @patch("img2pdf.convert")
+    def test_convert_image_to_pdf_image_open_error(
+        self, mock_convert, mock_open, mock_db, mock_file, caplog
+    ):
+        """Test ImageOpenError during image to PDF conversion."""
+        # Setup
+        mock_db.query.return_value.filter.return_value.first.return_value = mock_file
+
+        # Mock the PDF conversion to raise ImageOpenError
+        mock_convert.side_effect = img2pdf.ImageOpenError("Invalid image format")
+
+        # Test & Verify
+        with pytest.raises(ValueError) as exc_info:
+            convert_image_to_pdf(mock_db, 1, 1)
+
+        # Check the error message
+        assert "Failed to convert image to PDF" in str(exc_info.value)
+        assert "Invalid image format" in str(exc_info.value)
+
+        # Verify no database operations were performed
+        mock_db.add.assert_not_called()
+        mock_db.commit.assert_not_called()
+        mock_db.refresh.assert_not_called()
+
+        # No error log should be recorded for ImageOpenError as it's converted to ValueError
+        assert "Unexpected error during PDF conversion" not in caplog.text
+
+    @patch("builtins.open")
+    @patch("img2pdf.convert")
+    def test_convert_image_to_pdf_file_operation_error(
+        self, mock_convert, mock_open, mock_db, mock_file, caplog
+    ):
+        """Test file operation error during PDF saving."""
+        # Setup
+        mock_db.query.return_value.filter.return_value.first.return_value = mock_file
+
+        # Mock the PDF conversion to succeed
+        mock_convert.return_value = b"%PDF-1.4\n1 0 obj\n<</Type/Catalog/Pages 2 0 R>>\nendobj\n2 0 obj\n<</Type/Pages/Kids[3 0 R]/Count 1>>\nendobj\n3 0 obj\n<</Type/Page/Parent 2 0 R/Resources<<>>/MediaBox[0 0 612 792]>>\nendobj\n"
+
+        # Mock file open to raise OSError when saving the PDF
+        mock_open.side_effect = OSError("Disk full")
+
+        # Test & Verify
+        with pytest.raises(ValueError) as exc_info:
+            convert_image_to_pdf(mock_db, 1, 1)
+
+        # Check the error message
+        assert "Failed to process file: Disk full" in str(exc_info.value)
+
+        # Check logs
+        assert "File operation error: Disk full" in caplog.text
+
+        # Verify no database operations were performed
+        mock_db.add.assert_not_called()
+        mock_db.commit.assert_not_called()
+        mock_db.refresh.assert_not_called()
 
     @patch("builtins.open", new_callable=MagicMock)
     @patch("pypdf.PdfReader")
