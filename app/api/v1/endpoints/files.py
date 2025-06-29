@@ -8,10 +8,11 @@ from fastapi.responses import FileResponse, JSONResponse
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
-from app import crud, models
+from app import crud
 from app.api import deps
 from app.db.session import get_db
 from app.models.file import File as FileModel
+from app.models.user import User
 from app.schemas.file import File as FileSchema
 from app.services.file_service import file_service
 from app.tasks import convert_image_to_pdf
@@ -27,11 +28,16 @@ class TaskResponse(BaseModel):
 
 
 @router.post("/upload-image/", response_model=TaskResponse)
-def upload_image(file: UploadFile = File(...), db: Session = Depends(get_db)):
+def upload_image(
+    file: UploadFile = File(...),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(deps.get_current_active_user),
+):
     """
     Upload an image file and start conversion to PDF.
+    Requires authentication.
     """
-    logger.info("Uploading file: %s", file.filename)
+    logger.info("Uploading file: %s for user: %s", file.filename, current_user.email)
 
     if not file.content_type.startswith("image/"):
         detail = f"Unsupported file type: {file.content_type}."
@@ -75,7 +81,7 @@ def upload_image(file: UploadFile = File(...), db: Session = Depends(get_db)):
 async def get_task_status(
     task_id: str,
     db: Session = Depends(get_db),
-    current_user: models.User = Depends(deps.get_current_active_user),
+    current_user: User = Depends(deps.get_current_active_user),
 ):
     """
     Check the status of a Celery task.
@@ -125,7 +131,7 @@ async def get_task_status(
 async def download_file(
     file_id: int,
     db: Session = Depends(get_db),
-    current_user: models.User = Depends(deps.get_current_active_user),
+    current_user: User = Depends(deps.get_current_active_user),
 ):
     """
     Download a file.
@@ -172,7 +178,7 @@ async def list_files(
     skip: int = 0,
     limit: int = 100,
     db: Session = Depends(get_db),
-    current_user: models.User = Depends(deps.get_current_active_user),
+    current_user: User = Depends(deps.get_current_active_user),
 ):
     """
     List all files for the current user.
