@@ -5,10 +5,11 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
-from app import crud, models
+from app import crud
 from app.api import deps
 from app.db.session import get_db
 from app.models.file import File as FileModel
+from app.models.user import User
 from app.services.file_service import file_service
 
 router = APIRouter()
@@ -39,7 +40,7 @@ class MergeTaskResponse(BaseModel):
 def merge_pdfs_endpoint(
     request: MergePdfsRequest,
     db: Session = Depends(get_db),
-    current_user: models.User = Depends(deps.get_current_active_user),
+    current_user: User = Depends(deps.get_current_active_user),
 ):
     """
     Merge multiple PDF files into a single file.
@@ -77,7 +78,6 @@ def merge_pdfs_endpoint(
         task = file_service.create_merge_task(
             file_ids=request.file_ids,
             output_filename=request.output_filename,
-            user_id=current_user.id,  # Pass user_id for ownership tracking
         )
         logger.info(
             "Created merge task %s for user %s",
