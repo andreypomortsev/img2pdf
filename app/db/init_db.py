@@ -4,7 +4,7 @@ from app import crud
 from app.core.config import settings
 from app.db.base import Base
 from app.db.session import get_engine
-from app.schemas.token import UserCreate
+from app.schemas.user import UserCreate
 
 
 def init_db() -> None:
