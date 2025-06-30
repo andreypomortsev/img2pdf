@@ -1,28 +1,17 @@
 import logging
-from typing import List
 
 from fastapi import APIRouter, Depends, HTTPException, status
-from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
 from app import crud
 from app.api import deps
 from app.db.session import get_db
-from app.models.file import File as FileModel
+from app.models.pdfs import MergePdfsRequest, MergeTaskResponse
 from app.models.user import User
 from app.services.file_service import file_service
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
-
-
-class MergePdfsRequest(BaseModel):
-    file_ids: List[int]
-    output_filename: str
-
-
-class MergeTaskResponse(BaseModel):
-    task_id: str
 
 
 @router.post(
