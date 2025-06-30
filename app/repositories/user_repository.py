@@ -8,7 +8,7 @@ from sqlalchemy.future import select
 from app.core.security import get_password_hash, verify_password
 from app.models.user import User
 from app.repositories.base import BaseRepository
-from app.schemas.token import UserCreate, UserUpdate
+from app.schemas.user import UserCreate, UserUpdate
 
 
 class UserRepository(BaseRepository[User, UserCreate, UserUpdate]):
@@ -21,7 +21,9 @@ class UserRepository(BaseRepository[User, UserCreate, UserUpdate]):
 
     async def get_by_username(self, username: str) -> User | None:
         """Get a user by username."""
-        result = await self.db.execute(select(User).where(User.username == username))
+        result = await self.db.execute(
+            select(User).where(User.username == username)
+        )
         return result.scalars().first()
 
     async def create(self, *, obj_in: UserCreate) -> User:
@@ -31,9 +33,13 @@ class UserRepository(BaseRepository[User, UserCreate, UserUpdate]):
             username=obj_in.username,
             hashed_password=get_password_hash(obj_in.password),
             full_name=obj_in.full_name,
-            is_active=obj_in.is_active if obj_in.is_active is not None else True,
+            is_active=(
+                obj_in.is_active if obj_in.is_active is not None else True
+            ),
             is_superuser=(
-                obj_in.is_superuser if obj_in.is_superuser is not None else False
+                obj_in.is_superuser
+                if obj_in.is_superuser is not None
+                else False
             ),
         )
         self.db.add(db_obj)
@@ -41,7 +47,9 @@ class UserRepository(BaseRepository[User, UserCreate, UserUpdate]):
         await self.db.refresh(db_obj)
         return db_obj
 
-    async def authenticate(self, *, username: str, password: str) -> User | None:
+    async def authenticate(
+        self, *, username: str, password: str
+    ) -> User | None:
         """Authenticate a user."""
         user = await self.get_by_username(username=username)
         if not user:
