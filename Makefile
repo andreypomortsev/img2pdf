@@ -50,13 +50,28 @@ format:
 	black . --line-length 79
 	isort .
 
+test-coverage:
+	pytest tests/unit/ --cov --cov-report=term-missing --cov-report=html
+
 # Show help
 help:
-	@echo "Available targets:"
-	@echo "  test         - Run all tests"
-	@echo "  test-unit    - Run unit tests only"
-	@echo "  test-integration - Run integration tests only"
-	@echo "  test-cov     - Run tests with coverage report"
+	@echo "\nAvailable commands:"
+	@echo "  make help              - Show this help message"
+	@echo "  make test              - Run all tests"
+	@echo "  make test-unit         - Run unit tests only"
+	@echo "  make test-integration  - Run integration tests only"
+	@echo "  make test-coverage     - Run unit tests with coverage report"
+	@echo "  make format            - Format code using black and isort"
+	@echo "  make clean             - Remove Python cache and coverage files"
+	@echo "  make run               - Run the application"
+	@echo "  make docker-build      - Build Docker image"
+	@echo "  make docker-run        - Run the application in Docker"
+	@echo "  make docker-test       - Run tests in Docker"
+	@echo "  make docker-clean      - Remove Docker containers and images"
+	@echo "  make install           - Install dependencies"
+	@echo "  make install-dev       - Install development dependencies"
+	@echo "  make lint              - Run linters (black, isort, flake8)"
+	@echo "  make check-formatting  - Check code formatting without making changes"
 	@echo "  test-lint    - Run linting checks"
 	@echo "  test-all     - Run all tests and linting"
 	@echo "  build        - Build the test container"
