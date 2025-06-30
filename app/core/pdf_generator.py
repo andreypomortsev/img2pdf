@@ -13,7 +13,9 @@ class PDFGenerator:
     """Handles PDF generation and manipulation operations."""
 
     @staticmethod
-    def image_to_pdf(image_data: Union[bytes, BinaryIO], output_path: Path) -> Path:
+    def image_to_pdf(
+        image_data: Union[bytes, BinaryIO], output_path: Path
+    ) -> Path:
         """
         Convert an image to a PDF file.
 
@@ -39,14 +41,20 @@ class PDFGenerator:
                         f.write(img2pdf.convert(image_data))
                     else:
                         # Reset file pointer to start in case it was read before
-                        if hasattr(image_data, "seek") and hasattr(image_data, "tell"):
+                        if hasattr(image_data, "seek") and hasattr(
+                            image_data, "tell"
+                        ):
                             if image_data.tell() > 0:
                                 image_data.seek(0)
                         f.write(img2pdf.convert(image_data.read()))
                 except img2pdf.ImageOpenError as e:
-                    raise ValueError(f"Failed to convert image to PDF: {str(e)}") from e
+                    raise ValueError(
+                        f"Failed to convert image to PDF: {str(e)}"
+                    ) from e
                 except Exception as e:
-                    raise ValueError(f"Failed to convert image to PDF: {str(e)}") from e
+                    raise ValueError(
+                        f"Failed to convert image to PDF: {str(e)}"
+                    ) from e
 
             return output_path
         except IOError as e:
