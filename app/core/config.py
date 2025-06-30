@@ -1,4 +1,5 @@
 import os
+from pathlib import Path
 from typing import List, Optional
 
 
@@ -48,17 +49,20 @@ class Settings:
         self._database_url = value
 
     # File upload settings
-    UPLOAD_FOLDER: str = os.getenv("UPLOAD_FOLDER", "uploads")
+    UPLOAD_FOLDER: Path = Path(os.getenv("UPLOAD_FOLDER", "uploads")).resolve()
 
     # Production Celery settings (will be patched for tests)
-    CELERY_BROKER_URL: str = os.getenv("CELERY_BROKER_URL", "redis://redis:6379/0")
+    CELERY_BROKER_URL: str = os.getenv(
+        "CELERY_BROKER_URL", "redis://redis:6379/0"
+    )
     CELERY_RESULT_BACKEND: str = os.getenv(
         "CELERY_RESULT_BACKEND", "redis://redis:6379/0"
     )
 
     # Security
     SECRET_KEY: str = os.getenv(
-        "SECRET_KEY", "09d25e094faa6ca2556c818166b7a9563b93f7099f6f0f4caa6cf63b88e8d3e7"
+        "SECRET_KEY",
+        "09d25e094faa6ca2556c818166b7a9563b93f7099f6f0f4caa6cf63b88e8d3e7",
     )
     ALGORITHM: str = "HS256"
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 60 * 24 * 8  # 8 days
@@ -72,7 +76,9 @@ class Settings:
 
     # First superuser
     FIRST_SUPERUSER_EMAIL: Optional[str] = os.getenv("FIRST_SUPERUSER_EMAIL")
-    FIRST_SUPERUSER_PASSWORD: Optional[str] = os.getenv("FIRST_SUPERUSER_PASSWORD")
+    FIRST_SUPERUSER_PASSWORD: Optional[str] = os.getenv(
+        "FIRST_SUPERUSER_PASSWORD"
+    )
 
     # Celery settings for testing (will be True only when patched by conftest.py)
     CELERY_TASK_ALWAYS_EAGER: bool = False
