@@ -1,22 +1,16 @@
 import logging
-import os
 from typing import List
 
-from celery.result import AsyncResult
-from fastapi import APIRouter, Depends, File, HTTPException, UploadFile, status
-from fastapi.responses import FileResponse, JSONResponse
+from fastapi import APIRouter, Depends, File, UploadFile
+from fastapi.responses import FileResponse
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
-from app import crud
-from app.api import deps
+from app import deps
 from app.db.session import get_db
-from app.models.file import File as FileModel
 from app.models.user import User
 from app.schemas.file import File as FileSchema
 from app.services.file_service import file_service
-from app.tasks import convert_image_to_pdf
-from app.worker import celery_app
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
@@ -28,45 +22,18 @@ class TaskResponse(BaseModel):
 
 
 @router.post("/upload-image/", response_model=TaskResponse)
-def upload_image(
+async def upload_image(
     file: UploadFile = File(...),
     db: Session = Depends(get_db),
     current_user: User = Depends(deps.get_current_active_user),
 ):
     """
     Upload an image file and start conversion to PDF.
-    Requires authentication.
+    
+    This endpoint is idempotent - uploading the same file multiple times will create
+    separate file entries and conversion tasks, ensuring no side effects from retries.
     """
-    logger.info("Uploading file: %s for user: %s", file.filename, current_user.email)
-
-    if not file.content_type.startswith("image/"):
-        detail = f"Unsupported file type: {file.content_type}."
-        raise HTTPException(
-            status_code=400,
-            detail=detail,
-        )
-
-    try:
-        # Save the file with owner information
-        db_file = file_service.save_file(
-            db=db, file=file, owner_id=current_user.id, content_type=file.content_type
-        )
-
-        # Commit the session to make the file object available to the worker
-        db.commit()
-
-        # Dispatch Celery task for PDF conversion
-        task = convert_image_to_pdf.delay(db_file.id)
-        logger.info(
-            "Created conversion task %s for file %s (user_id: %s)",
-            task.id,
-            file.filename,
-            current_user.id,
-        )
-        return {"task_id": task.id, "file_id": db_file.id}
-    except Exception as e:
-        logger.error("Error uploading file %s: %s", file.filename, e, exc_info=True)
-        raise HTTPException(status_code=500, detail="Failed to upload file")
+    return file_service.start_image_conversion(db, file, current_user)
 
 
 @router.get(
@@ -85,37 +52,13 @@ async def get_task_status(
 ):
     """
     Check the status of a Celery task.
-
-    This endpoint allows users to check the status of their file conversion tasks.
-    Users can only check the status of their own tasks.
+    
+    This endpoint is idempotent - multiple identical requests will return the same result
+    without any side effects.
+    
+    Users can only check the status of their own tasks. Superusers can check any task.
     """
-    task_result = AsyncResult(task_id, app=celery_app)
-
-    # If task is ready, verify the user has access to the result
-    if (
-        task_result.ready()
-        and task_result.result
-        and isinstance(task_result.result, dict)
-    ):
-        file_id = task_result.result.get("file_id")
-        if file_id:
-            db_file = crud.file.get(db, id=file_id)
-            if (
-                db_file
-                and db_file.owner_id != current_user.id
-                and not current_user.is_superuser
-            ):
-                raise HTTPException(
-                    status_code=status.HTTP_403_FORBIDDEN,
-                    detail="Not authorized to access this task",
-                )
-
-    return {
-        "task_id": task_id,
-        "status": task_result.status,
-        "result": task_result.result if task_result.ready() else None,
-    }
-    logger.info("Task %s status: %s", task_id, task_result.status)
+    return file_service.get_task_status(task_id, db, current_user)
 
 
 @router.get(
@@ -135,30 +78,13 @@ async def download_file(
 ):
     """
     Download a file.
-
-    This endpoint allows users to download files they own.
-    Superusers can download any file.
+    
+    This endpoint is idempotent - multiple identical requests will return the same file
+    without any side effects.
+    
+    Users can only download their own files. Superusers can download any file.
     """
-    db_file = crud.file.get(db, id=file_id)
-    if not db_file:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="File not found",
-        )
-
-    # Check if the current user is the owner or a superuser
-    if db_file.owner_id != current_user.id and not current_user.is_superuser:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Not authorized to access this file",
-        )
-
-    if not os.path.exists(db_file.filepath):
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="File not found on disk",
-        )
-
+    db_file = file_service.get_file_by_id(db, file_id, current_user)
     return FileResponse(
         db_file.filepath,
         media_type=db_file.content_type or "application/octet-stream",
@@ -182,18 +108,10 @@ async def list_files(
 ):
     """
     List all files for the current user.
-
-    This endpoint returns a paginated list of files owned by the current user.
-    Superusers can see all files.
+    
+    This endpoint is idempotent - multiple identical requests will return the same
+    list of files without any side effects.
+    
+    Regular users see only their own files. Superusers see all files.
     """
-    if current_user.is_superuser:
-        files = db.query(FileModel).offset(skip).limit(limit).all()
-    else:
-        files = (
-            db.query(FileModel)
-            .filter(FileModel.owner_id == current_user.id)
-            .offset(skip)
-            .limit(limit)
-            .all()
-        )
-    return files
+    return file_service.list_user_files(db, current_user, skip, limit)
