@@ -20,7 +20,7 @@
 - **Брокер сообщений**: Redis
 - **База данных**: PostgreSQL с SQLAlchemy ORM
 - **Обработка изображений**: Pillow, img2pdf
-- **Манипуляции с PDF**: PyPDF2
+- **Манипуляции с PDF**: pypdf
 - **Безопасность**: Passlib, OAuth2 с паролем (и хешированием)
 - **Тестирование**: Pytest, HTTPX
 - **Контейнеризация**: Docker, Docker Compose

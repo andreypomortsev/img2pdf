@@ -20,7 +20,7 @@ Un servicio web seguro que convierte imágenes a archivos PDF y fusiona múltipl
 - **Broker de Mensajes**: Redis
 - **Base de Datos**: PostgreSQL con SQLAlchemy ORM
 - **Procesamiento de Imágenes**: Pillow, img2pdf
-- **Manipulación de PDF**: PyPDF2
+- **Manipulación de PDF**: pypdf
 - **Seguridad**: Passlib, OAuth2 con Contraseña (y hashing)
 - **Pruebas**: Pytest, HTTPX
 - **Contenedores**: Docker, Docker Compose
