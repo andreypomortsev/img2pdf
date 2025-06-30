@@ -40,9 +40,13 @@ class BaseRepository(Generic[ModelType, CreateSchemaType, UpdateSchemaType]):
         )
         return result.scalars().first()
 
-    async def get_multi(self, *, skip: int = 0, limit: int = 100) -> list[ModelType]:
+    async def get_multi(
+        self, *, skip: int = 0, limit: int = 100
+    ) -> list[ModelType]:
         """Get multiple records with pagination."""
-        result = await self.db.execute(select(self.model).offset(skip).limit(limit))
+        result = await self.db.execute(
+            select(self.model).offset(skip).limit(limit)
+        )
         return result.scalars().all()
 
     async def create(self, *, obj_in: CreateSchemaType) -> ModelType:
@@ -62,7 +66,7 @@ class BaseRepository(Generic[ModelType, CreateSchemaType, UpdateSchemaType]):
         if isinstance(obj_in, dict):
             update_data = obj_in
         else:
-            update_data = obj_in.dict(exclude_unset=True)
+            update_data = obj_in.model_dump(exclude_unset=True)
 
         for field in obj_data:
             if field in update_data:
