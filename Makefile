@@ -46,6 +46,10 @@ clean:
 	find . -name '__pycache__' -delete
 	find ../. -name '.coverage' -delete
 
+format:
+	black . --line-length 79
+	isort .
+
 # Show help
 help:
 	@echo "Available targets:"
