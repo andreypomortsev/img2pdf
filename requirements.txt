@@ -4,7 +4,7 @@ celery[redis]
 SQLAlchemy
 psycopg2-binary
 img2pdf
-PyPDF2
+pypdf>=3.0.0
 pytest
 pytest-cov
 httpx
