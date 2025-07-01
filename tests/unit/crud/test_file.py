@@ -61,7 +61,9 @@ class TestCRUDFile:
     ):
         """Test getting a file by ID."""
         # Arrange
-        mock_db.query.return_value.filter.return_value.first.return_value = test_file
+        mock_db.query.return_value.filter.return_value.first.return_value = (
+            test_file
+        )
 
         # Act
         result = crud_file.get_by_id(mock_db, id=1)
@@ -71,10 +73,14 @@ class TestCRUDFile:
         mock_db.query.assert_called_once_with(FileModel)
         mock_db.query.return_value.filter.return_value.first.assert_called_once()
 
-    def test_get_by_id_not_found(self, mock_db: MagicMock, crud_file: CRUDFile):
+    def test_get_by_id_not_found(
+        self, mock_db: MagicMock, crud_file: CRUDFile
+    ):
         """Test getting a non-existent file by ID returns None."""
         # Arrange
-        mock_db.query.return_value.filter.return_value.first.return_value = None
+        mock_db.query.return_value.filter.return_value.first.return_value = (
+            None
+        )
 
         # Act
         result = crud_file.get_by_id(mock_db, id=999)
@@ -92,14 +98,18 @@ class TestCRUDFile:
         ]
 
         # Act
-        result = crud_file.get_multi_by_owner(mock_db, owner_id=1, skip=0, limit=10)
+        result = crud_file.get_multi_by_owner(
+            mock_db, owner_id=1, skip=0, limit=10
+        )
 
         # Assert
         assert len(result) == 1
         assert result[0] == test_file
         mock_db.query.assert_called_once_with(FileModel)
         mock_db.query.return_value.filter.assert_called_once()
-        mock_db.query.return_value.filter.return_value.offset.assert_called_once_with(0)
+        mock_db.query.return_value.filter.return_value.offset.assert_called_once_with(
+            0
+        )
         mock_db.query.return_value.filter.return_value.offset.return_value.limit.assert_called_once_with(
             10
         )
@@ -188,7 +198,9 @@ class TestCRUDFile:
         mock_db.delete.assert_called_once_with(test_file)
         mock_db.commit.assert_called_once()
 
-    def test_remove_non_existing(self, mock_db: MagicMock, crud_file: CRUDFile):
+    def test_remove_non_existing(
+        self, mock_db: MagicMock, crud_file: CRUDFile
+    ):
         """Test removing a non-existing file."""
         # Arrange
         mock_db.query.return_value.get.return_value = None
