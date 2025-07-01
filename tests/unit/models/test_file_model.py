@@ -118,7 +118,9 @@ def test_file_update_timestamps(db_session, test_user):
     db_session.refresh(file)
 
     # Created at should not change
-    assert file.created_at == created_at, "created_at should not change after update"
+    assert (
+        file.created_at == created_at
+    ), "created_at should not change after update"
 
     # Convert datetimes to timestamps (seconds since epoch) for comparison
     updated_at_ts = updated_at.timestamp()
