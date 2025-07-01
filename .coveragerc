@@ -1,79 +1,40 @@
 [run]
-# Only measure coverage for unit tests
+# Measure coverage only for the application code
 source = app
 
-# Only include unit test files in the coverage report
-include = 
-    */tests/unit/*.py
-    */tests/unit/**/*.py
-
-# Omit everything else
+# Omit specific directories and files from coverage
 omit =
-    # All non-unit test files
-    *
-    
-    # Except these test directories
-    !*/tests/unit/*
-    
-    # Still exclude these
+    */tests/integration/*
     */__pycache__/*
     */.pytest_cache/*
-    */.*_cache/*
     */.vscode/*
     */.idea/*
 
-# Enable branch coverage for better analysis
+# Enable branch coverage and parallel execution
 branch = True
-
-# Enable parallel execution for faster coverage in CI/CD
 parallel = True
 
-# Set minimum coverage threshold (adjust as needed)
+# Fail if coverage is below this threshold
 fail_under = 80
 
 [report]
-# Show which lines are missing coverage
-the line = True
-
-# Show partial branches (if branch coverage is enabled)
+# Show missing lines in the report
 show_missing = True
 
-# Exclude lines from coverage consideration
+# Exclude lines matching these patterns
 exclude_lines =
     # Don't count debug-only code
     pragma: no cover
-    
+
     # Ignore abstract method definitions
-    @(abc\.)?abstractmethod
-    
-    # Ignore if/elif/else/return/raise that are just for type checking
+    @abc\.abstractmethod
+    @abstractmethod
+
+    # Ignore code for type checking
     if TYPE_CHECKING:
-    
-    # Ignore debug-only code
-    if __name__ == .__main__.:
-    
-    # Ignore pass statements
+
+    # Entry point
+    if __name__ == "__main__":
+
+    # Skip pass-only blocks
     ^\s*pass\s*$
-
-# Don't count these as missing coverage
-partial_branches =
-    # Ignore exception handling branches where we can't test all cases
-    pragma: no branch
-
-[html]
-# Directory where coverage HTML report will be generated
-directory = htmlcov
-
-# Show source code in HTML report
-show_source = True
-
-# Title for the HTML report
-title = Code Coverage Report
-
-[xml]
-# Output file for XML report (useful for CI/CD integration)
-output = coverage.xml
-
-[junit]
-# Output file for JUnit XML report (useful for CI/CD)
-output = junit.xml
