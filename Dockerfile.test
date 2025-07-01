@@ -1,16 +1,9 @@
-FROM python:3.11-slim
+FROM python:3.13-alpine
 
 # Set environment variables
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
     PYTHONPATH=/app
-
-# Install system dependencies
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    gcc \
-    python3-dev \
-    libpq-dev \
-    && rm -rf /var/lib/apt/lists/*
 
 # Set working directory
 WORKDIR /app
@@ -21,6 +14,11 @@ RUN pip install --no-cache-dir -r requirements.txt -r requirements-dev.txt
 
 # Copy the application code
 COPY . .
+
+# Create non-root user and switch to it
+RUN adduser -D non_root
+
+USER non_root
 
 # Command to run tests (can be overridden in docker-compose)
 CMD ["pytest", "tests/", "-v"]
