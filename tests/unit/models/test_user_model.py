@@ -1,6 +1,6 @@
 """Tests for the User model."""
 
-from datetime import datetime
+from datetime import datetime, timezone
 
 import pytest
 from sqlalchemy.exc import IntegrityError
@@ -105,13 +105,19 @@ def test_user_last_login(db_session):
     assert user.last_login is None
 
     # Update last_login
-    login_time = datetime.utcnow()
+    login_time = datetime.now(timezone.utc)
     user.last_login = login_time
     db_session.commit()
     db_session.refresh(user)
 
     assert user.last_login is not None
-    assert abs((user.last_login - login_time).total_seconds()) < 1
+    # Ensure both datetimes are timezone-aware before comparison
+    last_login = (
+        user.last_login.replace(tzinfo=timezone.utc)
+        if user.last_login.tzinfo is None
+        else user.last_login
+    )
+    assert abs((last_login - login_time).total_seconds()) < 1
 
 
 def test_user_relationships(db_session, test_user):
