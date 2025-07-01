@@ -1,17 +1,15 @@
 """Tests for the UserRepository class."""
 
-from unittest.mock import AsyncMock, MagicMock, call, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 import pytest_asyncio
-from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.orm import Session
 
-from app.core.security import get_password_hash, verify_password
+from app.core.security import get_password_hash
 from app.models.user import User
 from app.repositories.user_repository import UserRepository
-from app.schemas.token import UserCreate, UserUpdate
+from app.schemas.user import UserCreate
 
 
 @pytest_asyncio.fixture
@@ -68,7 +66,9 @@ class TestUserRepository:
         assert args[0].whereclause.right.value == test_email
 
     @pytest.mark.asyncio
-    async def test_get_by_email_not_found(self, user_repository, mock_db_session):
+    async def test_get_by_email_not_found(
+        self, user_repository, mock_db_session
+    ):
         """Test getting a user by email when user doesn't exist."""
         # Setup
         test_email = "nonexistent@example.com"
@@ -84,7 +84,9 @@ class TestUserRepository:
         mock_db_session.execute.assert_awaited_once()
 
     @pytest.mark.asyncio
-    async def test_get_by_username_found(self, user_repository, mock_db_session):
+    async def test_get_by_username_found(
+        self, user_repository, mock_db_session
+    ):
         """Test getting a user by username when user exists."""
         # Setup
         test_username = "testuser"
@@ -128,7 +130,9 @@ class TestUserRepository:
         )
 
         # Mock the password hashing
-        with patch("app.repositories.user_repository.get_password_hash") as mock_hash:
+        with patch(
+            "app.repositories.user_repository.get_password_hash"
+        ) as mock_hash:
             mock_hash.return_value = "hashed_password"
 
             # Execute
@@ -154,7 +158,9 @@ class TestUserRepository:
             assert result == added_user
 
     @pytest.mark.asyncio
-    async def test_authenticate_success(self, user_repository, mock_db_session):
+    async def test_authenticate_success(
+        self, user_repository, mock_db_session
+    ):
         """Test successful user authentication."""
         # Setup
         username = "testuser"
@@ -171,7 +177,9 @@ class TestUserRepository:
         )
 
         # Mock get_by_username to return our test user
-        with patch.object(user_repository, "get_by_username", return_value=mock_user):
+        with patch.object(
+            user_repository, "get_by_username", return_value=mock_user
+        ):
             # Execute
             result = await user_repository.authenticate(
                 username=username, password=password
@@ -195,7 +203,9 @@ class TestUserRepository:
         )
 
         # Mock get_by_username to return our test user
-        with patch.object(user_repository, "get_by_username", return_value=mock_user):
+        with patch.object(
+            user_repository, "get_by_username", return_value=mock_user
+        ):
             # Execute with wrong password
             result = await user_repository.authenticate(
                 username=username, password="wrong_password"
@@ -208,7 +218,9 @@ class TestUserRepository:
     async def test_authenticate_user_not_found(self, user_repository):
         """Test authentication when user doesn't exist."""
         # Setup - mock get_by_username to return None
-        with patch.object(user_repository, "get_by_username", return_value=None):
+        with patch.object(
+            user_repository, "get_by_username", return_value=None
+        ):
             # Execute with non-existent user
             result = await user_repository.authenticate(
                 username="nonexistent", password="anypassword"
