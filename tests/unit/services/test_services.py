@@ -49,13 +49,18 @@ class TestFileService:
 
             # Create a context manager for the open mock
             mock_file_handle = MagicMock()
-            mock_open_file.return_value.__enter__.return_value = mock_file_handle
+            mock_open_file.return_value.__enter__.return_value = (
+                mock_file_handle
+            )
 
             # Create a mock for the mkdir method
             with patch("pathlib.Path.mkdir") as mock_mkdir:
                 # Execute
                 db_file = self.file_service.save_file(
-                    db=self.db_session, file=mock_upload_file
+                    db=self.db_session,
+                    file=mock_upload_file,
+                    owner_id=1,
+                    content_type="image/png",
                 )
 
                 # Verify mkdir was called with the right arguments
@@ -79,7 +84,14 @@ class TestFileService:
         Test that get_file_by_id correctly queries the database using a mock session.
         """
         # Setup
-        mock_file = FileModel(id=1, filename="test.pdf", filepath="/tmp/test.pdf")
+        mock_user = MagicMock()
+        mock_user.id = 1
+        mock_user.is_superuser = False
+
+        mock_file = FileModel(
+            id=1, filename="test.pdf", filepath="/tmp/test.pdf", owner_id=1
+        )
+
         # Create a mock query object
         mock_query = MagicMock()
         # Set up the filter chain
@@ -89,15 +101,27 @@ class TestFileService:
         self.db_session.query.return_value = mock_query
 
         # Execute
-        db_file = self.file_service.get_file_by_id(db=self.db_session, file_id=1)
+        db_file = self.file_service.get_file_by_id(
+            db=self.db_session, file_id=1, current_user=mock_user
+        )
 
         # Assert
+        # Verify the query was made with FileModel
         self.db_session.query.assert_called_once_with(FileModel)
+
+        # Verify filter was called once with the file ID
         mock_query.filter.assert_called_once()
-        # Check that the filter condition is correct
-        filter_args, _ = mock_query.filter.call_args
-        assert str(filter_args[0].compare(FileModel.id == 1)) == "True"
+
+        # Get the filter condition
+        filter_condition = mock_query.filter.call_args[0][0]
+
+        # Verify the filter condition is for the file ID
+        assert "id = :id_1" in str(filter_condition)
+
+        # Verify the query was executed
         mock_filter.first.assert_called_once()
+
+        # Verify the returned file matches our mock
         assert db_file == mock_file
 
     @patch("app.services.file_service.merge_pdfs.delay")

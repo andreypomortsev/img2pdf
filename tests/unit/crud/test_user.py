@@ -1,15 +1,13 @@
 """Tests for the CRUD user operations."""
 
-from datetime import datetime, timezone
 from unittest.mock import MagicMock
 
-import pytest
 from sqlalchemy.orm import Session
 
 from app.core.security import get_password_hash
 from app.crud import crud_user
 from app.models.user import User
-from app.schemas.token import UserCreate, UserUpdate
+from app.schemas.user import UserCreate, UserUpdate
 
 
 def test_get_user():
@@ -23,7 +21,9 @@ def test_get_user():
         username="testuser",
         hashed_password="hashed_password",
     )
-    db.query.return_value.filter.return_value.first.return_value = expected_user
+    db.query.return_value.filter.return_value.first.return_value = (
+        expected_user
+    )
 
     # Act
     result = crud_user.get_user(db, user_id)
@@ -58,9 +58,14 @@ def test_get_user_by_email():
     db = MagicMock(spec=Session)
     email = "test@example.com"
     expected_user = User(
-        id=1, email=email, username="testuser", hashed_password="hashed_password"
+        id=1,
+        email=email,
+        username="testuser",
+        hashed_password="hashed_password",
     )
-    db.query.return_value.filter.return_value.first.return_value = expected_user
+    db.query.return_value.filter.return_value.first.return_value = (
+        expected_user
+    )
 
     # Act
     result = crud_user.get_user_by_email(db, email)
@@ -83,7 +88,9 @@ def test_get_user_by_username():
         username=username,
         hashed_password="hashed_password",
     )
-    db.query.return_value.filter.return_value.first.return_value = expected_user
+    db.query.return_value.filter.return_value.first.return_value = (
+        expected_user
+    )
 
     # Act
     result = crud_user.get_user_by_username(db, username)
@@ -116,7 +123,9 @@ def test_get_users():
     assert result == expected_users
     db.query.assert_called_once_with(User)
     db.query.return_value.offset.assert_called_once_with(skip)
-    db.query.return_value.offset.return_value.limit.assert_called_once_with(limit)
+    db.query.return_value.offset.return_value.limit.assert_called_once_with(
+        limit
+    )
     db.query.return_value.offset.return_value.limit.return_value.all.assert_called_once()
 
 
@@ -182,7 +191,9 @@ def test_update_user_with_dict():
     assert result.email == update_data["email"]
     assert result.username == update_data["username"]
     assert result.full_name == update_data["full_name"]
-    assert result.hashed_password != "old_hashed_password"  # Password should be hashed
+    assert (
+        result.hashed_password != "old_hashed_password"
+    )  # Password should be hashed
     assert (
         "password" not in result.__dict__
     )  # Password should be removed from update data
@@ -216,7 +227,9 @@ def test_update_user_with_userupdate():
     assert result.email == update_data.email
     assert result.username == update_data.username
     assert result.full_name == update_data.full_name
-    assert result.hashed_password != "old_hashed_password"  # Password should be hashed
+    assert (
+        result.hashed_password != "old_hashed_password"
+    )  # Password should be hashed
     assert (
         "password" not in result.__dict__
     )  # Password should be removed from update data
@@ -238,10 +251,14 @@ def test_authenticate_user_success():
         username=username,
         hashed_password=hashed_password,
     )
-    db.query.return_value.filter.return_value.first.return_value = expected_user
+    db.query.return_value.filter.return_value.first.return_value = (
+        expected_user
+    )
 
     # Act
-    result = crud_user.authenticate_user(db, username=username, password=password)
+    result = crud_user.authenticate_user(
+        db, username=username, password=password
+    )
 
     # Assert
     assert result == expected_user
@@ -257,7 +274,9 @@ def test_authenticate_user_invalid_username():
     db.query.return_value.filter.return_value.first.return_value = None
 
     # Act
-    result = crud_user.authenticate_user(db, username=username, password="anypassword")
+    result = crud_user.authenticate_user(
+        db, username=username, password="anypassword"
+    )
 
     # Assert
     assert result is None
@@ -277,7 +296,9 @@ def test_authenticate_user_invalid_password():
         username=username,
         hashed_password=hashed_password,
     )
-    db.query.return_value.filter.return_value.first.return_value = expected_user
+    db.query.return_value.filter.return_value.first.return_value = (
+        expected_user
+    )
 
     # Act
     result = crud_user.authenticate_user(
@@ -299,9 +320,14 @@ class TestCRUDUser:
         db = MagicMock(spec=Session)
         email = "test@example.com"
         expected_user = User(
-            id=1, email=email, username="testuser", hashed_password="hashed_password"
+            id=1,
+            email=email,
+            username="testuser",
+            hashed_password="hashed_password",
         )
-        db.query.return_value.filter.return_value.first.return_value = expected_user
+        db.query.return_value.filter.return_value.first.return_value = (
+            expected_user
+        )
         crud = crud_user.user
 
         # Act
@@ -319,9 +345,14 @@ class TestCRUDUser:
         db = MagicMock(spec=Session)
         username = "testuser"
         expected_user = User(
-            id=1, email="test@example.com", username=username, hashed_password="hashed"
+            id=1,
+            email="test@example.com",
+            username=username,
+            hashed_password="hashed",
         )
-        db.query.return_value.filter.return_value.first.return_value = expected_user
+        db.query.return_value.filter.return_value.first.return_value = (
+            expected_user
+        )
         crud = crud_user.user
 
         # Act
@@ -385,7 +416,9 @@ class TestCRUDUser:
             username="testuser",
             hashed_password=hashed_password,
         )
-        db.query.return_value.filter.return_value.first.return_value = expected_user
+        db.query.return_value.filter.return_value.first.return_value = (
+            expected_user
+        )
         crud = crud_user.user
 
         # Act
@@ -424,7 +457,9 @@ class TestCRUDUser:
             username="testuser",
             hashed_password=hashed_password,
         )
-        db.query.return_value.filter.return_value.first.return_value = expected_user
+        db.query.return_value.filter.return_value.first.return_value = (
+            expected_user
+        )
         crud = crud_user.user
 
         # Act
