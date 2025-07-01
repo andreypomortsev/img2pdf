@@ -2,16 +2,14 @@
 
 # Mock model for testing
 from datetime import datetime
-from typing import Any, Dict, Type
-from unittest.mock import AsyncMock, MagicMock, call, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 import pytest_asyncio
 from pydantic import BaseModel
-from sqlalchemy import Column, DateTime, Integer, String
+from sqlalchemy import DateTime, Integer, String
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.future import select
-from sqlalchemy.orm import Mapped, Session, mapped_column
+from sqlalchemy.orm import Mapped, mapped_column
 
 from app.db.base import Base
 from app.repositories.base import BaseRepository
@@ -23,7 +21,9 @@ class MockModel(Base):
     id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
     name: Mapped[str] = mapped_column(String, nullable=False)
     value: Mapped[int] = mapped_column(Integer, nullable=False)
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime, default=datetime.utcnow
+    )
     updated_at: Mapped[datetime] = mapped_column(
         DateTime, default=datetime.utcnow, onupdate=datetime.utcnow
     )
@@ -111,7 +111,8 @@ class TestBaseRepository:
         skip = 10
         limit = 5
         mock_objects = [
-            MockModel(id=i, name=f"Test {i}", value=i * 10) for i in range(1, 6)
+            MockModel(id=i, name=f"Test {i}", value=i * 10)
+            for i in range(1, 6)
         ]
 
         # Configure the mock to return our test objects
@@ -167,7 +168,9 @@ class TestBaseRepository:
         update_data = MockModelUpdate(name="New Name", value=20)
 
         # Execute
-        result = await base_repository.update(db_obj=db_obj, obj_in=update_data)
+        result = await base_repository.update(
+            db_obj=db_obj, obj_in=update_data
+        )
 
         # Verify the object was updated
         assert db_obj.name == "New Name"
@@ -189,7 +192,9 @@ class TestBaseRepository:
         update_data = {"name": "New Name", "value": 20}
 
         # Execute
-        result = await base_repository.update(db_obj=db_obj, obj_in=update_data)
+        result = await base_repository.update(
+            db_obj=db_obj, obj_in=update_data
+        )
 
         # Verify the object was updated
         assert db_obj.name == "New Name"
@@ -211,7 +216,9 @@ class TestBaseRepository:
         update_data = {"name": "New Name"}  # Only update name
 
         # Execute
-        result = await base_repository.update(db_obj=db_obj, obj_in=update_data)
+        result = await base_repository.update(
+            db_obj=db_obj, obj_in=update_data
+        )
 
         # Verify only the name was updated, value remains the same
         assert db_obj.name == "New Name"
@@ -233,14 +240,18 @@ class TestBaseRepository:
         mock_obj = MockModel(id=test_id, name="Test", value=42)
 
         # Mock get to return our test object
-        with patch.object(base_repository, "get", return_value=mock_obj) as mock_get:
+        with patch.object(
+            base_repository, "get", return_value=mock_obj
+        ) as mock_get:
             # Execute
             result = await base_repository.remove(id=test_id)
 
             # Verify get was called with the correct ID
             # The method is called with positional args, not keyword args
             mock_get.assert_awaited_once()
-            assert mock_get.await_args[0] == (test_id,)  # Check positional args
+            assert mock_get.await_args[0] == (
+                test_id,
+            )  # Check positional args
             assert mock_get.await_args[1] == {}  # No keyword args
 
             # Verify the object was deleted and session was committed
@@ -254,7 +265,9 @@ class TestBaseRepository:
     async def test_remove_not_found(self, base_repository, mock_db_session):
         """Test removing a non-existent record."""
         # Setup - get returns None
-        with patch.object(base_repository, "get", return_value=None) as mock_get:
+        with patch.object(
+            base_repository, "get", return_value=None
+        ) as mock_get:
             # Execute
             result = await base_repository.remove(id=999)
 
