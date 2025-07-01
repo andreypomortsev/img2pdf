@@ -1,14 +1,12 @@
 """Tests for the base CRUD operations."""
 
-from typing import Dict, Type
 from unittest import mock
-from unittest.mock import MagicMock, PropertyMock
+from unittest.mock import MagicMock
 
 import pytest
 from pydantic import BaseModel
-from sqlalchemy import Boolean, Column, Integer, String, create_engine
-from sqlalchemy.ext.declarative import declarative_base
-from sqlalchemy.orm import Session, sessionmaker
+from sqlalchemy import Boolean, Column, Integer, String
+from sqlalchemy.orm import Session, declarative_base
 
 from app.crud.base import CRUDBase
 
@@ -88,7 +86,9 @@ class TestCRUDBase:
         # Arrange
         test_id = 1
         expected_model = TestModel()
-        db.query.return_value.filter.return_value.first.return_value = expected_model
+        db.query.return_value.filter.return_value.first.return_value = (
+            expected_model
+        )
 
         # Act
         result = test_crud.get(db, id=test_id)
@@ -131,13 +131,17 @@ class TestCRUDBase:
         assert result == expected_models
         db.query.assert_called_once_with(TestModel)
         db.query.return_value.offset.assert_called_once_with(skip)
-        db.query.return_value.offset.return_value.limit.assert_called_once_with(limit)
+        db.query.return_value.offset.return_value.limit.assert_called_once_with(
+            limit
+        )
         db.query.return_value.offset.return_value.limit.return_value.all.assert_called_once()
 
     def test_create(self, db: MagicMock, test_crud: TestCRUD):
         """Test creating a new model."""
         # Arrange
-        obj_in = TestCreateSchema(name="Test Model", description="A test model")
+        obj_in = TestCreateSchema(
+            name="Test Model", description="A test model"
+        )
         db.add.return_value = None
         db.commit.return_value = None
         db.refresh.return_value = None
@@ -149,7 +153,9 @@ class TestCRUDBase:
         expected_obj.description = "A test model"
 
         # Mock the model instantiation to return our test instance
-        with mock.patch.object(TestModel, "__new__", return_value=expected_obj):
+        with mock.patch.object(
+            TestModel, "__new__", return_value=expected_obj
+        ):
             # Act
             result = test_crud.create(db, obj_in=obj_in)
 
@@ -166,7 +172,10 @@ class TestCRUDBase:
         db_obj.id = 1
         db_obj.name = "Original Name"
         db_obj.description = "Original description"
-        update_data = {"name": "Updated Name", "description": "Updated description"}
+        update_data = {
+            "name": "Updated Name",
+            "description": "Updated description",
+        }
 
         # Act
         result = test_crud.update(db, db_obj=db_obj, obj_in=update_data)
@@ -257,10 +266,14 @@ class TestCRUDBase:
         db.delete.assert_not_called()
         db.commit.assert_not_called()
 
-    def test_create_with_commit_error(self, db: MagicMock, test_crud: TestCRUD):
+    def test_create_with_commit_error(
+        self, db: MagicMock, test_crud: TestCRUD
+    ):
         """Test handling of commit error during model creation."""
         # Arrange
-        obj_in = TestCreateSchema(name="Test Model", description="A test model")
+        obj_in = TestCreateSchema(
+            name="Test Model", description="A test model"
+        )
         db.commit.side_effect = Exception("Database error")
 
         # Create a real instance for the mock to return
@@ -278,10 +291,14 @@ class TestCRUDBase:
             # Verify rollback was called on error
             db.rollback.assert_called_once()
 
-    def test_create_with_refresh_error(self, db: MagicMock, test_crud: TestCRUD):
+    def test_create_with_refresh_error(
+        self, db: MagicMock, test_crud: TestCRUD
+    ):
         """Test handling of refresh error after successful commit."""
         # Arrange
-        obj_in = TestCreateSchema(name="Test Model", description="A test model")
+        obj_in = TestCreateSchema(
+            name="Test Model", description="A test model"
+        )
         db.refresh.side_effect = Exception("Refresh error")
 
         # Create a real instance for the mock to return
@@ -299,7 +316,9 @@ class TestCRUDBase:
             # Verify commit was called before refresh
             db.commit.assert_called_once()
 
-    def test_update_with_commit_error(self, db: MagicMock, test_crud: TestCRUD):
+    def test_update_with_commit_error(
+        self, db: MagicMock, test_crud: TestCRUD
+    ):
         """Test handling of commit error during model update."""
         # Arrange
         db_obj = TestModel()
@@ -337,7 +356,9 @@ class TestCRUDBase:
         db.commit.assert_called_once()
         db.refresh.assert_called_once_with(db_obj)
 
-    def test_remove_with_commit_error(self, db: MagicMock, test_crud: TestCRUD):
+    def test_remove_with_commit_error(
+        self, db: MagicMock, test_crud: TestCRUD
+    ):
         """Test handling of commit error during model removal."""
         # Arrange
         test_id = 1
