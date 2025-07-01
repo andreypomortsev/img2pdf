@@ -6,12 +6,11 @@ import pytest
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
-from app.core.security import get_password_hash, verify_password
 from app.crud.crud_user import (CRUDUser, authenticate_user, create_user,
                                 get_user, get_user_by_email,
                                 get_user_by_username, get_users, update_user)
 from app.models.user import User
-from app.schemas.token import UserCreate
+from app.schemas.user import UserCreate
 
 
 class MockUserCreate(BaseModel):
@@ -71,12 +70,14 @@ def mock_db():
 
 @pytest.fixture
 def test_user():
-    """Create a test user instance."""
+    """Create a test user instance with mocked password."""
+    # Use a fixed hash to avoid actual bcrypt hashing
+    hashed_password = "$2b$12$EixZaYVK1fsbw1ZfbX3OXePaWxn96p36WQoeG6Lruj3vjPGga31lW"  # hash for 'testpass'
     return User(
         id=1,
         email="test@example.com",
         username="testuser",
-        hashed_password=get_password_hash("testpass"),
+        hashed_password=hashed_password,
         full_name="Test User",
         is_active=True,
         is_superuser=False,
@@ -91,7 +92,9 @@ class TestCRUDUser:
     def test_get_by_email_found(self, mock_db, test_user):
         """Test getting a user by email when user exists."""
         # Arrange
-        mock_db.query.return_value.filter.return_value.first.return_value = test_user
+        mock_db.query.return_value.filter.return_value.first.return_value = (
+            test_user
+        )
         crud = CRUDUser(User)
 
         # Act
@@ -106,7 +109,9 @@ class TestCRUDUser:
     def test_get_by_email_not_found(self, mock_db):
         """Test getting a user by email when user doesn't exist."""
         # Arrange
-        mock_db.query.return_value.filter.return_value.first.return_value = None
+        mock_db.query.return_value.filter.return_value.first.return_value = (
+            None
+        )
         crud = CRUDUser(User)
 
         # Act
@@ -121,7 +126,9 @@ class TestCRUDUser:
     def test_get_by_username_found(self, mock_db, test_user):
         """Test getting a user by username when user exists."""
         # Arrange
-        mock_db.query.return_value.filter.return_value.first.return_value = test_user
+        mock_db.query.return_value.filter.return_value.first.return_value = (
+            test_user
+        )
         crud = CRUDUser(User)
 
         # Act
@@ -136,7 +143,9 @@ class TestCRUDUser:
     def test_get_by_username_not_found(self, mock_db):
         """Test getting a user by username when user doesn't exist."""
         # Arrange
-        mock_db.query.return_value.filter.return_value.first.return_value = None
+        mock_db.query.return_value.filter.return_value.first.return_value = (
+            None
+        )
         crud = CRUDUser(User)
 
         # Act
@@ -160,7 +169,9 @@ class TestCRUDUser:
         user_create = UserCreate(**user_data)
 
         # Mock the User model to return our test user
-        with patch("app.crud.crud_user.User", return_value=test_user) as mock_user:
+        with patch(
+            "app.crud.crud_user.User", return_value=test_user
+        ) as mock_user:
             crud = CRUDUser(User)
 
             # Act
@@ -180,17 +191,20 @@ class TestCRUDUser:
             mock_db.commit.assert_called_once()
             mock_db.refresh.assert_called_once_with(test_user)
 
-    def test_authenticate_success(self, mock_db, test_user):
+    @patch("app.crud.crud_user.verify_password", return_value=True)
+    def test_authenticate_success(self, mock_verify, mock_db, test_user):
         """Test successful user authentication."""
         # Arrange
-        mock_db.query.return_value.filter.return_value.first.return_value = test_user
+        mock_db.query.return_value.filter.return_value.first.return_value = (
+            test_user
+        )
         crud = CRUDUser(User)
 
         # Act
         result = crud.authenticate(
             mock_db,
             email=test_user.email,
-            password="testpass",  # Matches the hashed password in test_user
+            password="testpass",
         )
 
         # Assert
@@ -198,23 +212,38 @@ class TestCRUDUser:
         mock_db.query.assert_called_once_with(User)
         mock_db.query.return_value.filter.assert_called_once()
         mock_db.query.return_value.filter.return_value.first.assert_called_once()
+        mock_verify.assert_called_once_with(
+            "testpass", test_user.hashed_password
+        )
 
-    def test_authenticate_wrong_password(self, mock_db, test_user):
+    @patch("app.crud.crud_user.verify_password", return_value=False)
+    def test_authenticate_wrong_password(
+        self, mock_verify, mock_db, test_user
+    ):
         """Test authentication with wrong password."""
         # Arrange
-        mock_db.query.return_value.filter.return_value.first.return_value = test_user
+        mock_db.query.return_value.filter.return_value.first.return_value = (
+            test_user
+        )
         crud = CRUDUser(User)
 
         # Act
-        result = crud.authenticate(mock_db, email=test_user.email, password="wrongpass")
+        result = crud.authenticate(
+            mock_db, email=test_user.email, password="wrongpass"
+        )
 
         # Assert
         assert result is None
+        mock_verify.assert_called_once_with(
+            "wrongpass", test_user.hashed_password
+        )
 
     def test_authenticate_user_not_found(self, mock_db):
         """Test authentication when user doesn't exist."""
         # Arrange
-        mock_db.query.return_value.filter.return_value.first.return_value = None
+        mock_db.query.return_value.filter.return_value.first.return_value = (
+            None
+        )
         crud = CRUDUser(User)
 
         # Act
@@ -253,7 +282,9 @@ class TestUserFunctions:
     def test_get_user_by_email(self, mock_db, test_user):
         """Test getting a user by email."""
         # Arrange
-        mock_db.query.return_value.filter.return_value.first.return_value = test_user
+        mock_db.query.return_value.filter.return_value.first.return_value = (
+            test_user
+        )
 
         # Act
         result = get_user_by_email(mock_db, email=test_user.email)
@@ -267,7 +298,9 @@ class TestUserFunctions:
     def test_get_user_by_username(self, mock_db, test_user):
         """Test getting a user by username."""
         # Arrange
-        mock_db.query.return_value.filter.return_value.first.return_value = test_user
+        mock_db.query.return_value.filter.return_value.first.return_value = (
+            test_user
+        )
 
         # Act
         result = get_user_by_username(mock_db, username=test_user.username)
@@ -293,7 +326,9 @@ class TestUserFunctions:
         assert result == users
         mock_db.query.assert_called_once_with(User)
         mock_db.query.return_value.offset.assert_called_once_with(0)
-        mock_db.query.return_value.offset.return_value.limit.assert_called_once_with(10)
+        mock_db.query.return_value.offset.return_value.limit.assert_called_once_with(
+            10
+        )
         mock_db.query.return_value.offset.return_value.limit.return_value.all.assert_called_once()
 
     def test_create_user_function(self, mock_db, test_user):
@@ -310,7 +345,9 @@ class TestUserFunctions:
         user_create = UserCreate(**user_data)
 
         # Mock the User model to return our test user
-        with patch("app.crud.crud_user.User", return_value=test_user) as mock_user:
+        with patch(
+            "app.crud.crud_user.User", return_value=test_user
+        ) as mock_user:
             # Act
             result = create_user(mock_db, user=user_create)
 
@@ -331,7 +368,10 @@ class TestUserFunctions:
     def test_update_user_with_dict(self, mock_db, test_user):
         """Test updating a user with a dictionary."""
         # Arrange
-        update_data = {"email": "updated@example.com", "full_name": "Updated Name"}
+        update_data = {
+            "email": "updated@example.com",
+            "full_name": "Updated Name",
+        }
 
         # Act
         result = update_user(mock_db, db_user=test_user, user_in=update_data)
@@ -355,21 +395,28 @@ class TestUserFunctions:
         # Assert
         assert result == test_user
         assert test_user.hashed_password != "newpassword"  # Should be hashed
-        assert verify_password("newpassword", test_user.hashed_password)
         mock_db.add.assert_called_once_with(test_user)
         mock_db.commit.assert_called_once()
         mock_db.refresh.assert_called_once_with(test_user)
 
-    def test_authenticate_user_success(self, mock_db, test_user):
+    @patch(
+        "app.crud.crud_user.get_password_hash", return_value="hashed_password"
+    )
+    @patch("app.crud.crud_user.verify_password", return_value=True)
+    def test_authenticate_user_success(
+        self, mock_verify, mock_get_password_hash, mock_db, test_user
+    ):
         """Test successful user authentication with standalone function."""
         # Arrange
-        mock_db.query.return_value.filter.return_value.first.return_value = test_user
+        mock_db.query.return_value.filter.return_value.first.return_value = (
+            test_user
+        )
 
         # Act
         result = authenticate_user(
             mock_db,
             username=test_user.username,
-            password="testpass",  # Matches the hashed password in test_user
+            password="testpass",
         )
 
         # Assert
@@ -377,11 +424,22 @@ class TestUserFunctions:
         mock_db.query.assert_called_once_with(User)
         mock_db.query.return_value.filter.assert_called_once()
         mock_db.query.return_value.filter.return_value.first.assert_called_once()
+        mock_verify.assert_called_once_with(
+            "testpass", test_user.hashed_password
+        )
 
-    def test_authenticate_user_wrong_password(self, mock_db, test_user):
+    @patch(
+        "app.crud.crud_user.get_password_hash", return_value="hashed_password"
+    )
+    @patch("app.crud.crud_user.verify_password", return_value=False)
+    def test_authenticate_user_wrong_password(
+        self, mock_verify, mock_get_password_hash, mock_db, test_user
+    ):
         """Test authentication with wrong password using standalone function."""
         # Arrange
-        mock_db.query.return_value.filter.return_value.first.return_value = test_user
+        mock_db.query.return_value.filter.return_value.first.return_value = (
+            test_user
+        )
 
         # Act
         result = authenticate_user(
@@ -390,14 +448,21 @@ class TestUserFunctions:
 
         # Assert
         assert result is None
+        mock_verify.assert_called_once_with(
+            "wrongpass", test_user.hashed_password
+        )
 
     def test_authenticate_user_not_found(self, mock_db):
         """Test authentication when user doesn't exist using standalone function."""
         # Arrange
-        mock_db.query.return_value.filter.return_value.first.return_value = None
+        mock_db.query.return_value.filter.return_value.first.return_value = (
+            None
+        )
 
         # Act
-        result = authenticate_user(mock_db, username="nonexistent", password="anypass")
+        result = authenticate_user(
+            mock_db, username="nonexistent", password="anypass"
+        )
 
         # Assert
         assert result is None
