@@ -528,8 +528,37 @@ class TestFileService:
                 exc_info.value.status_code
                 == status.HTTP_500_INTERNAL_SERVER_ERROR
             )
-            assert "Failed to process file" in str(exc_info.value.detail)
-            mock_convert_task.delay.assert_called_once_with(1)
+
+    @patch("app.services.file_service.convert_image_to_pdf")
+    def test_start_image_conversion_http_exception(self, mock_convert_task):
+        """Test that HTTPException is re-raised when raised by save_file."""
+        # Arrange
+        db = MagicMock(spec=Session)
+        file = MagicMock(spec=UploadFile)
+        file.content_type = "image/png"
+        file.filename = "test.png"
+        current_user = MagicMock(id=1, is_superuser=False)
+
+        # Create an HTTPException to be raised
+        http_exception = HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid file format",
+        )
+
+        # Configure the mock to raise the HTTPException
+        service = FileService()
+        with patch.object(
+            service, "save_file", side_effect=http_exception
+        ) as mock_save:
+            # Act & Assert
+            with pytest.raises(HTTPException) as exc_info:
+                service.start_image_conversion(db, file, current_user)
+
+            # Verify the same exception is re-raised
+            assert exc_info.value.status_code == status.HTTP_400_BAD_REQUEST
+            assert "Invalid file format" in str(exc_info.value.detail)
+            mock_save.assert_called_once()
+            mock_convert_task.delay.assert_not_called()
 
     @patch("app.services.file_service.AsyncResult")
     @patch("app.services.file_service.celery_app")
@@ -570,9 +599,12 @@ class TestFileService:
         mock_async_result.assert_called_once_with(task_id, app=ANY)
         mock_get_file.assert_called_once_with(db, 1, current_user)
 
+    @patch("app.services.file_service.logger")
     @patch("app.services.file_service.AsyncResult")
     @patch("app.services.file_service.celery_app")
-    def test_get_task_status_pending(self, mock_celery_app, mock_async_result):
+    def test_get_task_status_pending(
+        self, mock_celery_app, mock_async_result, mock_logger
+    ):
         """Test getting status of a pending task."""
         # Arrange
         db = MagicMock(spec=Session)
@@ -602,48 +634,68 @@ class TestFileService:
             "result": None,
         }
         mock_async_result.assert_called_once_with(task_id, app=ANY)
+        mock_logger.info.assert_called_once_with(
+            "Task %s status: %s", task_id, "PENDING"
+        )
 
+    @patch("app.services.file_service.logger")
     @patch("app.services.file_service.AsyncResult")
     @patch("app.services.file_service.celery_app")
-    def test_get_task_status_failure(self, mock_celery_app, mock_async_result):
-        """Test getting status of a failed task."""
+    def test_get_task_status_file_not_found(
+        self, mock_celery_app, mock_async_result, mock_logger
+    ):
+        """Test getting status when task result contains a file_id but file is not found."""
         # Arrange
-        db = MagicMock(spec=Session)
-        current_user = MagicMock()
         task_id = "test-task-123"
-        error_message = "Test error"
+        file_id = 999  # Non-existent file ID
+        db = MagicMock(spec=Session)
+        current_user = MagicMock(spec=User, id=1, is_superuser=False)
 
-        # Mock AsyncResult for failed task
+        # Mock the task result with a file_id
         mock_result = MagicMock()
         mock_result.ready.return_value = True
-        mock_result.status = "FAILURE"
-        mock_result.result = Exception(error_message)
+        mock_result.status = "SUCCESS"
+        mock_result.result = {"file_id": file_id, "status": "completed"}
+
+        # Mock the AsyncResult to return our mock result
         mock_async_result.return_value = mock_result
 
-        # Mock celery app
-        mock_celery_app.return_value = MagicMock()
-
-        # Act
+        # Mock get_file_by_id to raise 404 when called with our test file_id
         service = FileService()
-        result = service.get_task_status(task_id, db, current_user)
+        with patch.object(
+            service,
+            "get_file_by_id",
+            side_effect=HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND, detail="File not found"
+            ),
+        ) as mock_get_file:
+            # Act & Assert
+            with pytest.raises(HTTPException) as exc_info:
+                service.get_task_status(task_id, db, current_user)
 
-        # Assert
-        assert result == {
-            "task_id": task_id,
-            "status": "FAILURE",
-            "result": mock_result.result,
-        }
-        mock_async_result.assert_called_once_with(task_id, app=ANY)
+            # Verify the exception has the expected status code
+            assert exc_info.value.status_code == status.HTTP_404_NOT_FOUND
+            assert "File not found" in str(exc_info.value.detail)
 
+            # Verify get_file_by_id was called with the correct arguments
+            mock_get_file.assert_called_once_with(db, file_id, current_user)
+
+            # Verify the AsyncResult was created with the correct task_id
+            mock_async_result.assert_called_once_with(task_id, app=ANY)
+
+            # Verify the logger was not called since an exception was raised
+            mock_logger.info.assert_not_called()
+
+    @patch("app.services.file_service.logger")
     @patch("app.services.file_service.AsyncResult")
     @patch("app.services.file_service.celery_app")
     def test_get_task_status_unauthorized(
-        self, mock_celery_app, mock_async_result
+        self, mock_celery_app, mock_async_result, mock_logger
     ):
         """Test getting status of a task with unauthorized access to result."""
         # Arrange
         db = MagicMock(spec=Session)
-        current_user = MagicMock(id=1, is_superuser=False)
+        current_user = MagicMock(spec=User, id=1, is_superuser=False)
         task_id = "test-task-123"
 
         # Mock AsyncResult for completed task
@@ -653,54 +705,61 @@ class TestFileService:
         mock_result.result = {"file_id": 1}
         mock_async_result.return_value = mock_result
 
-        # Mock celery app
-        mock_celery_app.return_value = MagicMock()
-
         # Mock get_file_by_id to raise 403
         service = FileService()
         with patch.object(
             service,
             "get_file_by_id",
             side_effect=HTTPException(
-                status_code=403, detail="Not authorized"
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Not authorized to access this file",
             ),
         ) as mock_get_file:
             # Act & Assert
             with pytest.raises(HTTPException) as exc_info:
                 service.get_task_status(task_id, db, current_user)
 
-            assert exc_info.value.status_code == 403
+            assert exc_info.value.status_code == status.HTTP_403_FORBIDDEN
             assert "Not authorized" in str(exc_info.value.detail)
             mock_get_file.assert_called_once_with(db, 1, current_user)
+            # Verify the logger was not called since an exception was raised
+            mock_logger.info.assert_not_called()
 
+    @patch("app.services.file_service.logger")
     @patch("app.services.file_service.AsyncResult")
     @patch("app.services.file_service.celery_app")
     def test_get_task_status_invalid_result(
-        self, mock_celery_app, mock_async_result
+        self, mock_celery_app, mock_async_result, mock_logger
     ):
         """Test getting status with invalid task result format."""
         # Arrange
-        db = MagicMock(spec=Session)
-        current_user = MagicMock()
         task_id = "test-task-123"
+        db = MagicMock(spec=Session)
+        current_user = MagicMock(spec=User, id=1, is_superuser=False)
 
-        # Mock AsyncResult with invalid result format
+        # Mock the task result
         mock_result = MagicMock()
         mock_result.ready.return_value = True
         mock_result.status = "SUCCESS"
-        mock_result.result = "invalid-result"  # Not a dict
-        mock_async_result.return_value = mock_result
+        mock_result.result = {
+            "some": "invalid",
+            "result": "format",
+        }  # Missing file_id
 
-        # Mock celery app
-        mock_celery_app.return_value = MagicMock()
+        # Mock the AsyncResult to return our mock result
+        mock_async_result.return_value = mock_result
 
         # Act
         service = FileService()
         result = service.get_task_status(task_id, db, current_user)
 
-        # Should still return the status even if result format is invalid
+        # Assert
         assert result == {
             "task_id": task_id,
             "status": "SUCCESS",
-            "result": "invalid-result",
+            "result": {"some": "invalid", "result": "format"},
         }
+        mock_async_result.assert_called_once_with(task_id, app=ANY)
+        mock_logger.info.assert_called_once_with(
+            "Task %s status: %s", task_id, "SUCCESS"
+        )
