@@ -1,64 +1,19 @@
 from io import BytesIO
-from unittest.mock import MagicMock, Mock, patch
+from unittest.mock import Mock, patch
 
 import pytest
 from fastapi import HTTPException, status
-from fastapi.testclient import TestClient
 from sqlalchemy.orm import Session
-
-from app.main import app  # Adjust import path as needed
-from app.models.file import File as FileModel
-from app.models.user import User
-
-
-@pytest.fixture
-def client():
-    """Create a test client for the FastAPI app."""
-    return TestClient(app)
-
-
-@pytest.fixture
-def mock_user():
-    """Mock regular user."""
-    user = Mock(spec=User)
-    user.id = 1
-    user.is_superuser = False
-    user.email = "test@example.com"
-    return user
-
-
-@pytest.fixture
-def mock_superuser():
-    """Mock superuser."""
-    user = Mock(spec=User)
-    user.id = 2
-    user.is_superuser = True
-    user.email = "admin@example.com"
-    return user
-
-
-@pytest.fixture
-def mock_file_model():
-    """Mock file model."""
-    file_model = Mock(spec=FileModel)
-    file_model.id = 1
-    file_model.filename = "test_image.jpg"
-    file_model.filepath = "/tmp/test_image.jpg"
-    file_model.content_type = "image/jpeg"
-    file_model.owner_id = 1
-    return file_model
-
-
-@pytest.fixture
-def sample_image_file():
-    """Create a sample image file for testing."""
-    # Create a simple PNG file content (minimal PNG header)
-    png_content = b"\x89PNG\r\n\x1a\n\x00\x00\x00\rIHDR\x00\x00\x00\x01\x00\x00\x00\x01\x08\x02\x00\x00\x00\x90wS\xde\x00\x00\x00\tpHYs\x00\x00\x0b\x13\x00\x00\x0b\x13\x01\x00\x9a\x9c\x18\x00\x00\x00\x12IDATx\x9cc\xf8\x0f\x00\x00\x01\x00\x01\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x18\xdd\x8d\xb4\x1c\x00\x00\x00\x00IEND\xaeB`\x82"
-    return BytesIO(png_content)
 
 
 class TestUploadImageEndpoint:
     """Test the POST /upload-image/ endpoint."""
+
+    @pytest.fixture(autouse=True)
+    def setup(self, client, mock_user, sample_image_file):
+        self.client = client
+        self.mock_user = mock_user
+        self.sample_image_file = sample_image_file
 
     @patch("app.api.v1.endpoints.files.file_service")
     @patch("app.db.session.get_db")
@@ -70,28 +25,25 @@ class TestUploadImageEndpoint:
         mock_get_by_email,
         mock_get_db,
         mock_file_service,
-        client,
-        mock_user,
-        sample_image_file,
     ):
         """Test successful image upload returns task info."""
         # Arrange
         mock_db = Mock(spec=Session)
         mock_get_db.return_value = mock_db
-        mock_get_by_email.return_value = mock_user
-        mock_jwt_decode.return_value = {"sub": mock_user.email}
+        mock_get_by_email.return_value = self.mock_user
+        mock_jwt_decode.return_value = {"sub": self.mock_user.email}
         mock_file_service.start_image_conversion.return_value = {
             "task_id": "test-task-123",
             "file_id": 1,
         }
 
         # Reset the file pointer to the beginning
-        sample_image_file.seek(0)
+        self.sample_image_file.seek(0)
 
         # Act
-        response = client.post(
+        response = self.client.post(
             "/api/v1/files/upload-image/",
-            files={"file": ("test.jpg", sample_image_file, "image/jpeg")},
+            files={"file": ("test.jpg", self.sample_image_file, "image/jpeg")},
             headers={"Authorization": "Bearer test-token"},
         )
 
@@ -107,7 +59,7 @@ class TestUploadImageEndpoint:
         # Verify the session was passed (don't compare the actual session object)
         assert isinstance(args[0], Session)  # Verify it's a SQLAlchemy session
         # Verify user and file arguments
-        assert args[2] == mock_user  # current user
+        assert args[2] == self.mock_user  # current user
         # File argument is UploadFile, check its properties
         uploaded_file = args[1]
         assert uploaded_file.filename == "test.jpg"
@@ -123,22 +75,20 @@ class TestUploadImageEndpoint:
         mock_get_by_email,
         mock_get_db,
         mock_file_service,
-        client,
-        mock_user,
     ):
         """Test upload with invalid file type returns 400."""
         # Arrange
         mock_db = Mock(spec=Session)
         mock_get_db.return_value = mock_db
-        mock_get_by_email.return_value = mock_user
-        mock_jwt_decode.return_value = {"sub": mock_user.email}
+        mock_get_by_email.return_value = self.mock_user
+        mock_jwt_decode.return_value = {"sub": self.mock_user.email}
         mock_file_service.start_image_conversion.side_effect = HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Unsupported file type: application/pdf",
         )
 
         # Act
-        response = client.post(
+        response = self.client.post(
             "/api/v1/files/upload-image/",
             files={
                 "file": ("test.pdf", BytesIO(b"fake pdf"), "application/pdf")
@@ -189,7 +139,7 @@ class TestListFilesEndpoint:
                 "filepath": "/tmp/test1.jpg",
                 "created_at": datetime(2023, 1, 1, tzinfo=timezone.utc),
                 "updated_at": datetime(2023, 1, 1, tzinfo=timezone.utc),
-                "url": "http://testserver/files/1",  # Add full URL for validation
+                "url": "http://testserver/files/1",
             },
             {
                 "id": 2,
