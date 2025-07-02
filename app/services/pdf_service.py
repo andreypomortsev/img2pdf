@@ -10,170 +10,266 @@ import os
 from typing import List
 
 import img2pdf
-from pypdf import PdfReader, PdfWriter
+from fastapi import HTTPException, status
+from pypdf import PdfWriter
 from sqlalchemy.orm import Session
 
+from app import crud
 from app.core.config import settings
+from app.interfaces.task_service_interface import TaskServiceInterface
 from app.models.file import File
+from app.models.file import File as FileModel
+from app.models.user import User
 from app.schemas.file import FileCreate
+from app.schemas.pdf import MergePdfsRequest, MergeTaskResponse
 
 logger = logging.getLogger(__name__)
 
-TEMP_DIR = settings.UPLOAD_FOLDER / "temp"
-TEMP_DIR.mkdir(parents=True, exist_ok=True)
 
+class PDFService:
+    """Service for handling PDF-related operations."""
 
-def convert_image_to_pdf(db: Session, file_id: int, owner_id: int) -> File:
-    """
-    Convert an image file to PDF.
+    def __init__(self, task_service: TaskServiceInterface):
+        """Initialize PDF service with task service dependency."""
+        self.task_service = task_service
+        self.temp_dir = settings.UPLOAD_FOLDER / "temp"
+        os.makedirs(self.temp_dir, exist_ok=True)
 
-    Args:
-        db: Database session
-        file_id: ID of the image file to convert
-        owner_id: ID of the user who owns the file
+    def convert_image_to_pdf(
+        self, db: Session, file_id: int, owner_id: int
+    ) -> File:
+        """
+        Convert an image file to PDF.
 
-    Returns:
-        File: The newly created PDF file record
+        Args:
+            db: Database session
+            file_id: ID of the image file to convert
+            owner_id: ID of the user who owns the file
 
-    Raises:
-        ValueError: If the file is not found or not an image
-    """
-    logger.info("Converting image to PDF for file id %s", file_id)
+        Returns:
+            File: The newly created PDF file record
 
-    image_file = db.query(File).filter(File.id == file_id).first()
-    if not image_file:
-        raise ValueError(f"File with id {file_id} not found.")
+        Raises:
+            ValueError: If the file is not found or not an image
+        """
+        logger.info("Converting image to PDF for file id %s", file_id)
 
-    # Read image and convert to PDF
-    try:
-        with open(image_file.filepath, "rb") as f:
-            try:
-                pdf_bytes = img2pdf.convert([f.read()])
-            except img2pdf.ImageOpenError as e:
-                raise ValueError(f"Failed to convert image to PDF: {str(e)}") from e
-            except Exception as e:
-                logger.error(f"Unexpected error during PDF conversion: {str(e)}")
-                raise ValueError(f"Failed to convert image to PDF: {str(e)}") from e
+        image_file = db.query(File).filter(File.id == file_id).first()
+        if not image_file:
+            raise ValueError(f"File with id {file_id} not found.")
 
-        # Create output filename and path
-        pdf_filename = f"{os.path.splitext(image_file.filename)[0]}.pdf"
-        output_path = settings.UPLOAD_FOLDER / pdf_filename
+        # Read image and convert to PDF
+        try:
+            with open(image_file.filepath, "rb") as f:
+                try:
+                    pdf_bytes = img2pdf.convert([f.read()])
+                except img2pdf.ImageOpenError as e:
+                    raise ValueError(
+                        f"Failed to convert image to PDF: {str(e)}"
+                    ) from e
+                except Exception as e:
+                    logger.error(
+                        f"Unexpected error during PDF conversion: {str(e)}"
+                    )
+                    raise ValueError(
+                        f"Failed to convert image to PDF: {str(e)}"
+                    ) from e
 
-        # Save PDF to disk
-        with open(output_path, "wb") as f:
-            f.write(pdf_bytes)
-    except OSError as e:
-        logger.error(f"File operation error: {str(e)}")
-        raise ValueError(f"Failed to process file: {str(e)}") from e
+            # Create output filename and path
+            pdf_filename = f"{os.path.splitext(image_file.filename)[0]}.pdf"
+            output_path = settings.UPLOAD_FOLDER / str(owner_id) / pdf_filename
+            output_path.parent.mkdir(parents=True, exist_ok=True)
 
-    # Create file record
-    file_data = FileCreate(
-        filename=pdf_filename,
-        filepath=str(output_path),
-        content_type="application/pdf",
-        owner_id=owner_id,
-    )
+            # Save PDF to disk
+            with open(output_path, "wb") as f_out:
+                f_out.write(pdf_bytes)
 
-    db_file = File(**file_data.model_dump())
-    db.add(db_file)
-    db.commit()
-    db.refresh(db_file)
+            # Create file record
+            file_data = FileCreate(
+                filename=pdf_filename,
+                filepath=str(output_path),
+                content_type="application/pdf",
+                owner_id=owner_id,  # Set the owner_id in the file data
+            )
 
-    return db_file
+            db_file = crud.file.create(db=db, obj_in=file_data)
+            db.commit()
+            db.refresh(db_file)
 
+            return db_file
 
-def merge_pdfs(
-    db: Session, file_ids: List[int], output_filename: str, owner_id: int
-) -> File:
-    """
-    Merge multiple PDF files into a single PDF.
+        except OSError as e:
+            logger.error(f"File operation error: {str(e)}")
+            raise ValueError(f"Failed to process file: {str(e)}") from e
 
-    Args:
-        db: Database session
-        file_ids: List of file IDs to merge
-        output_filename: Name of the output PDF file
-        owner_id: ID of the user who owns the files
+    def merge_pdfs(
+        self,
+        db: Session,
+        file_ids: List[int],
+        output_filename: str,
+        owner_id: int,
+    ) -> File:
+        """
+        Merge multiple PDF files into a single PDF.
 
-    Returns:
-        File: The newly created merged PDF file record
+        Args:
+            db: Database session
+            file_ids: List of file IDs to merge
+            output_filename: Name of the output PDF file
+            owner_id: ID of the user who owns the files
 
-    Raises:
-        ValueError: If no files provided or any file is not found or not a PDF
-    """
-    logger.info("Merging PDFs for file ids: %s", file_ids)
+        Returns:
+            File: The newly created merged PDF file record
 
-    # Check for empty input
-    if not file_ids:
-        raise ValueError("No PDF files to merge")
-
-    # Get all input files
-    pdf_files = db.query(File).filter(File.id.in_(file_ids)).all()
-    if len(pdf_files) != len(file_ids):
-        found_ids = {f.id for f in pdf_files}
-        missing_ids = set(file_ids) - found_ids
-        raise ValueError(f"Files with ids {missing_ids} not found.")
-
-    # Ensure output directory exists
-    output_path = TEMP_DIR / output_filename
-    logger.info("Output path: %s", output_path)
-    logger.info("Output directory exists: %s", output_path.parent.exists())
-
-    # Create parent directories if they don't exist
-    output_path.parent.mkdir(parents=True, exist_ok=True)
-    logger.info("Output directory created/exists: %s", output_path.parent.exists())
-
-    # Verify input files exist and are readable
-    for pdf_file in pdf_files:
-        logger.info(
-            "Input file: %s, exists: %s, readable: %s",
-            pdf_file.filepath,
-            os.path.exists(pdf_file.filepath),
-            os.access(pdf_file.filepath, os.R_OK),
-        )
-
-    # Merge PDFs
-    writer = PdfWriter()
-    try:
-        for pdf_file in pdf_files:
-            try:
-                logger.info("Reading PDF: %s", pdf_file.filepath)
-                reader = PdfReader(pdf_file.filepath)
-                logger.info(
-                    "Adding %d pages from %s", len(reader.pages), pdf_file.filename
-                )
-                for page in reader.pages:
-                    writer.add_page(page)
-            except Exception as e:
-                logger.error(
-                    "Error reading PDF %s: %s", pdf_file.filepath, str(e), exc_info=True
-                )
-                raise ValueError(f"Error reading PDF {pdf_file.filename}: {str(e)}")
-
-        # Write merged PDF to disk
-        logger.info("Writing merged PDF to: %s", output_path)
-        with open(output_path, "wb") as out_file:
-            writer.write(out_file)
+        Raises:
+            ValueError: If no files provided or any file is not found or not a PDF
+        """
+        if not file_ids:
+            raise ValueError("No files provided to merge.")
 
         logger.info(
-            "Merged PDF written successfully. File exists: %s, size: %d bytes",
-            output_path.exists(),
-            output_path.stat().st_size if output_path.exists() else 0,
+            "Merging PDFs with ids %s into %s for user %s",
+            file_ids,
+            output_filename,
+            owner_id,
         )
 
-        # Create file record
-        file_data = FileCreate(
-            filename=output_filename,
-            filepath=str(output_path),
-            content_type="application/pdf",
-            owner_id=owner_id,
-        )
+        # Ensure output filename ends with .pdf
+        if not output_filename.lower().endswith(".pdf"):
+            output_filename += ".pdf"
 
-        db_file = File(**file_data.model_dump())
-        db.add(db_file)
-        db.commit()
-        db.refresh(db_file)
+        # Create output directory if it doesn't exist
+        output_dir = settings.UPLOAD_FOLDER / str(owner_id)
+        output_dir.mkdir(parents=True, exist_ok=True)
+        output_path = output_dir / output_filename
 
-        return db_file
+        # Check for existing file with same name and append number if needed
+        counter = 1
+        original_name = output_path.stem
+        while output_path.exists():
+            output_path = output_dir / f"{original_name}_{counter}.pdf"
+            counter += 1
 
-    finally:
-        writer.close()
+        # Get all files and verify they exist and are PDFs
+        files = []
+        for file_id in file_ids:
+            file = crud.file.get(db, id=file_id)
+            if not file:
+                raise ValueError(f"File with ID {file_id} not found")
+            if not file.filepath.lower().endswith(".pdf"):
+                raise ValueError(f"File with ID {file_id} is not a PDF")
+            if file.owner_id != owner_id:
+                raise ValueError(
+                    f"Not authorized to access file with ID {file_id}"
+                )
+            files.append(file)
+
+        # Merge PDFs
+        merger = PdfWriter()
+        try:
+            for file in files:
+                try:
+                    merger.append(file.filepath)
+                except Exception as e:
+                    raise ValueError(
+                        f"Error reading file {file.id}: {str(e)}"
+                    ) from e
+
+            # Write merged PDF to disk
+            with open(output_path, "wb") as output_file:
+                merger.write(output_file)
+
+            # Create file record
+            # Create the file record directly using FileModel
+            db_file = FileModel(
+                filename=output_path.name,
+                filepath=str(output_path),
+                content_type="application/pdf",
+                owner_id=owner_id,
+            )
+            db.add(db_file)
+            db.commit()
+            db.refresh(db_file)
+
+            return db_file
+
+        except Exception as e:
+            # Clean up the output file if it was created
+            if output_path.exists():
+                try:
+                    output_path.unlink()
+                except OSError:
+                    logger.warning(
+                        f"Failed to clean up output file: {output_path}"
+                    )
+            raise ValueError(f"Failed to merge PDFs: {str(e)}") from e
+
+        finally:
+            # Ensure the merger is always closed
+            try:
+                merger.close()
+            except Exception as e:
+                logger.warning(f"Error closing PDF merger: {str(e)}")
+
+    def merge_pdfs_endpoint(
+        self, db: Session, request: MergePdfsRequest, current_user: User
+    ) -> MergeTaskResponse:
+        """
+        Handle the PDF merge HTTP endpoint.
+
+        Args:
+            db: Database session
+            request: The merge PDFs request containing file IDs and output filename
+            current_user: The currently authenticated user
+
+        Returns:
+            MergeTaskResponse: The response containing the task ID
+
+        Raises:
+            HTTPException: If there's an error processing the request
+        """
+        try:
+            # Log the merge request
+            logger.info(
+                "User %s requested to merge files %s into %s",
+                current_user.id,
+                request.file_ids,
+                request.output_filename,
+            )
+
+            # Call the merge_pdfs method to perform the actual merge
+            merged_file = self.merge_pdfs(
+                db=db,
+                file_ids=request.file_ids,
+                output_filename=request.output_filename,
+                owner_id=current_user.id,
+            )
+
+            # Delegate task creation to the task service
+            return task_service.create_merge_task(db, request, current_user)
+
+        except ValueError as e:
+            # Handle validation errors
+            logger.warning(
+                "Validation error in merge_pdfs_endpoint for user %s: %s",
+                current_user.id,
+                str(e),
+            )
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST, detail=str(e)
+            )
+        except Exception as e:
+            # Handle unexpected errors
+            logger.error(
+                "Error in merge_pdfs_endpoint for user %s: %s",
+                current_user.id,
+                str(e),
+                exc_info=True,
+            )
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="An error occurred while processing your request",
+            )
+
+
+# Note: Instantiation is now handled in app/services/__init__.py
