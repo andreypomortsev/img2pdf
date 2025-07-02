@@ -4,7 +4,7 @@ This module contains the SQLAlchemy models for handling user accounts,
 authentication, and authorization within the application.
 """
 
-from datetime import datetime, timezone
+from datetime import datetime
 from typing import List, Optional
 
 from sqlalchemy import Boolean, String
@@ -12,9 +12,10 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.core.security import get_password_hash, verify_password
 from app.db.base import Base
+from app.db.mixins import TimestampMixin
 
 
-class User(Base):
+class User(Base, TimestampMixin):
     """Database model for application users.
 
     Attributes:
@@ -25,34 +26,50 @@ class User(Base):
         full_name: User's full name
         is_active: Whether the user account is active
         is_superuser: Whether the user has superuser privileges
-        created_at: Timestamp when the user was created
-        updated_at: Timestamp when the user was last updated
         last_login: Timestamp of the user's last login
         files: Relationship to files uploaded by the user
+
+    Inherited from TimestampMixin:
+        created_at: Timestamp when the user was created
+        updated_at: Timestamp when the user was last updated
     """
 
     __tablename__ = "users"
 
     id: Mapped[int] = mapped_column(primary_key=True, index=True)
     email: Mapped[str] = mapped_column(
-        String(255), unique=True, index=True, nullable=False
+        String(255),
+        unique=True,
+        index=True,
+        nullable=False,
+        comment="User's email address (must be unique)",
     )
     username: Mapped[str] = mapped_column(
-        String(50), unique=True, index=True, nullable=False
-    )
-    hashed_password: Mapped[str] = mapped_column(String(255), nullable=False)
-    full_name: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
-    is_active: Mapped[bool] = mapped_column(Boolean, default=True)
-    is_superuser: Mapped[bool] = mapped_column(Boolean, default=False)
-    created_at: Mapped[datetime] = mapped_column(
-        default=lambda: datetime.now(timezone.utc), nullable=False
-    )
-    updated_at: Mapped[datetime] = mapped_column(
-        default=lambda: datetime.now(timezone.utc),
-        onupdate=lambda: datetime.now(timezone.utc),
+        String(50),
+        unique=True,
+        index=True,
         nullable=False,
+        comment="Username (must be unique)",
     )
-    last_login: Mapped[Optional[datetime]] = mapped_column(nullable=True)
+    hashed_password: Mapped[str] = mapped_column(
+        String(255),
+        nullable=False,
+        comment="Hashed password (never store plain text passwords!)",
+    )
+    full_name: Mapped[Optional[str]] = mapped_column(
+        String(100), nullable=True, comment="User's full name"
+    )
+    is_active: Mapped[bool] = mapped_column(
+        Boolean, default=True, comment="Whether the user account is active"
+    )
+    is_superuser: Mapped[bool] = mapped_column(
+        Boolean,
+        default=False,
+        comment="Whether the user has superuser privileges",
+    )
+    last_login: Mapped[Optional[datetime]] = mapped_column(
+        nullable=True, comment="Timestamp of the user's last login"
+    )
 
     # Relationships
     files: Mapped[List["File"]] = relationship(
