@@ -58,7 +58,10 @@ class UserUpdate(BaseModel):
         default=None, description="The user's new email address"
     )
     username: Optional[str] = Field(
-        default=None, min_length=3, max_length=50, description="The user's new username"
+        default=None,
+        min_length=3,
+        max_length=50,
+        description="The user's new username",
     )
     full_name: Optional[str] = Field(
         default=None, max_length=100, description="The user's full name"
@@ -93,14 +96,18 @@ class UserInDBBase(BaseModel):
     id: int = Field(..., description="The user's unique ID")
     email: EmailStr = Field(..., description="The user's email address")
     username: str = Field(..., description="The user's username")
-    full_name: Optional[str] = Field(default=None, description="The user's full name")
+    full_name: Optional[str] = Field(
+        default=None, description="The user's full name"
+    )
     is_active: bool = Field(
         default=True, description="Whether the user account is active"
     )
     is_superuser: bool = Field(
         default=False, description="Whether the user has superuser privileges"
     )
-    created_at: datetime = Field(..., description="When the user account was created")
+    created_at: datetime = Field(
+        ..., description="When the user account was created"
+    )
     updated_at: datetime = Field(
         ..., description="When the user account was last updated"
     )
