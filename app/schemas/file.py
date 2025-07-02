@@ -1,7 +1,16 @@
+"""Pydantic schemas for file-related data models.
+
+This module defines the data models and schemas used for file operations in the application.
+It includes schemas for creating, updating, and retrieving file information, with proper
+validation and serialization of file metadata.
+"""
+
 from datetime import datetime, timezone
 from typing import Any, Dict, Optional
 
 from pydantic import BaseModel, ConfigDict, Field, HttpUrl, model_validator
+
+from app.core.config import settings
 
 
 class FileBase(BaseModel):
@@ -93,12 +102,20 @@ class File(FileInDBBase):
     @model_validator(mode="before")
     @classmethod
     def set_url(cls, data: Dict[str, Any]) -> Dict[str, Any]:
-        """Set the URL for the file if not provided."""
+        """Set the URL for the file if not provided.
+
+        The URL will be constructed using the server's base URL from settings.
+        If SERVER_HOST is not configured, a default of 'http://localhost:8000' is used.
+        """
         if not isinstance(data, dict):
             return data
 
         if "url" not in data and "id" in data:
-            data["url"] = f"/files/{data['id']}"
+            # Use SERVER_HOST from settings if available, otherwise use a default
+            base_url = getattr(
+                settings, "SERVER_HOST", "http://localhost:8000"
+            ).rstrip("/")
+            data["url"] = f"{base_url}/files/{data['id']}"
         return data
 
 
