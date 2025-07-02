@@ -4,10 +4,10 @@ import io
 from pathlib import Path
 from unittest.mock import MagicMock, mock_open, patch
 
-import img2pdf
 import pytest
 from PIL import Image
 
+import img2pdf
 from app.core.pdf_generator import PDFGenerator
 
 
