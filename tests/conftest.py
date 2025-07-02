@@ -6,8 +6,8 @@ import tempfile
 import uuid
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Dict, Generator, List, Optional
-from unittest.mock import MagicMock, Mock, patch
+from typing import Any, Generator
+from unittest.mock import MagicMock, patch
 
 import pytest
 from _pytest.monkeypatch import MonkeyPatch
@@ -19,11 +19,10 @@ from sqlalchemy.orm import Session, sessionmaker
 from sqlalchemy.pool import StaticPool
 
 from app.core.config import settings
-from app.core.security import create_access_token, get_password_hash
+from app.core.security import get_password_hash
 from app.db.base import Base
 from app.models.file import File
 from app.models.user import User
-from app.schemas.token import TokenData
 
 
 # Enable foreign key constraints for SQLite

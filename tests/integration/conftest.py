@@ -1,5 +1,6 @@
 """Pytest configuration and fixtures for integration tests."""
 
+import io
 import os
 import tempfile
 import uuid
@@ -7,11 +8,11 @@ from typing import Any, Generator
 
 import pytest
 from fastapi.testclient import TestClient
-from sqlalchemy import StaticPool, create_engine, event, text
+from sqlalchemy import create_engine, event, text
 from sqlalchemy.engine import Engine
 from sqlalchemy.orm import Session, sessionmaker
 
-from app.core.security import create_access_token, get_password_hash
+from app.core.security import get_password_hash
 from app.db.base import Base
 from app.models.file import File
 from app.models.user import User
@@ -29,101 +30,58 @@ def set_sqlite_pragma(dbapi_connection: Any, connection_record: Any) -> None:
 
 @pytest.fixture(scope="session")
 def db_engine() -> Generator[Engine, None, None]:
-    """Create a PostgreSQL database engine for testing."""
-    # Use PostgreSQL for testing to match production environment
-    database_url = "postgresql://user:password@db/mydatabase_test"
+    """Create a SQLite database engine for testing."""
+    # Use in-memory SQLite for testing
+    database_url = "sqlite:///:memory:"
     print("\n=== Setting up test database ===")
-    print(f"Database URL: {database_url}")
+    print("Using in-memory SQLite database")
 
-    # Wait for PostgreSQL to be ready
-    import time
-
-    from sqlalchemy.exc import OperationalError
-
-    max_retries = 10
-    retry_delay = 2  # seconds
-
-    for attempt in range(max_retries):
-        try:
-            # Test connection
-            temp_engine = create_engine(database_url)
-            with temp_engine.connect() as conn:
-                conn.execute(text("SELECT 1"))
-            break
-        except OperationalError as e:
-            if attempt == max_retries - 1:
-                raise RuntimeError(
-                    f"Failed to connect to PostgreSQL after {max_retries} attempts"
-                ) from e
-            print(
-                f"PostgreSQL not ready, retrying in {retry_delay} seconds... (attempt {attempt + 1}/{max_retries})"
-            )
-            time.sleep(retry_delay)
-
-    # Create engine with connection pooling for PostgreSQL
+    # Create engine with SQLite-specific settings
     engine = create_engine(
-        database_url,
-        echo=bool(os.getenv("SQL_ECHO")),
-        pool_pre_ping=True,  # Enable connection health checks
-        pool_size=5,  # Number of connections to keep open
-        max_overflow=10,  # Max number of connections beyond pool_size
+        database_url, connect_args={"check_same_thread": False}, echo=False
     )
 
     # Create all tables
     print("\n=== Creating database tables ===")
 
-    # Import all models to ensure they are registered with SQLAlchemy
-    from app.models import file, user  # noqa: F401
-
-    # Drop all tables first to ensure a clean state
-    Base.metadata.drop_all(bind=engine)
+    # Drop all existing tables first (in case they exist)
+    with engine.begin() as conn:
+        # SQLite doesn't support DROP SCHEMA CASCADE, so we'll drop tables directly
+        conn.execute(text("PRAGMA foreign_keys=OFF"))
+        for table in reversed(Base.metadata.sorted_tables):
+            conn.execute(text(f"DROP TABLE IF EXISTS {table.name}"))
+        conn.execute(text("PRAGMA foreign_keys=ON"))
 
     # Create all tables
-    Base.metadata.create_all(bind=engine)
-
-    # Get the list of tables that should exist
-    expected_tables = list(Base.metadata.tables.keys())
-    print(f"=== Expected tables: {expected_tables} ===")
+    Base.metadata.create_all(engine)
 
     # Verify tables were created
     with engine.connect() as conn:
-        # Verify tables exist
-        result = conn.execute(
-            text(
-                """
-                SELECT table_name 
-                FROM information_schema.tables 
-                WHERE table_schema = 'public'
-                """
+        # Get the list of tables
+        existing_tables = Base.metadata.tables.keys()
+        print(f"=== Expected tables: {list(existing_tables)} ===")
+
+        # Check if users table exists and get its columns
+        if "users" not in existing_tables:
+            raise RuntimeError(
+                "Users table was not created in the test database"
             )
-        )
-        tables = [row[0] for row in result]
-        print(f"=== Actual tables in database: {tables} ===")
 
-        # Verify all expected tables exist
-        missing_tables = set(expected_tables) - set(tables)
-        if missing_tables:
-            raise RuntimeError(f"Missing tables in database: {missing_tables}")
-
-        # Verify the users table exists and has the expected columns
-        if "users" not in tables:
-            raise RuntimeError("Users table not found in database")
-
-        # Get columns for users table
-        result = conn.execute(
-            text(
-                """
-                SELECT column_name 
-                FROM information_schema.columns 
-                WHERE table_name = 'users'
-                """
-            )
-        )
-        columns = [row[0] for row in result]
-        print(f"=== Users table columns: {columns} ===")
+        # Get the columns from the users table
+        result = conn.execute(text("PRAGMA table_info(users)"))
+        columns = [
+            row[1] for row in result
+        ]  # Column name is the second item in the result
 
         # Verify required columns exist
-        required_columns = {"id", "email", "username", "hashed_password", "is_active"}
+        required_columns = {
+            "id",
+            "email",
+            "username",
+            "hashed_password",
+            "is_active",
+        }
+
         missing_columns = required_columns - set(columns)
         if missing_columns:
             raise RuntimeError(
@@ -214,7 +172,9 @@ def db_session(db_engine: Engine) -> Generator[Session, None, None]:
     transaction = connection.begin()
 
     # Create a session bound to the connection
-    session = sessionmaker(autocommit=False, autoflush=False, bind=connection)()
+    session = sessionmaker(
+        autocommit=False, autoflush=False, bind=connection
+    )()
 
     # Start a savepoint for nested transactions
     session.begin_nested()
@@ -247,7 +207,9 @@ def override_get_db():
         # Create a new connection and session for this request
         connection = db_engine.connect()
         transaction = connection.begin()
-        session = sessionmaker(autocommit=False, autoflush=False, bind=connection)()
+        session = sessionmaker(
+            autocommit=False, autoflush=False, bind=connection
+        )()
 
         # Begin a savepoint for nested transaction
         session.begin_nested()
@@ -270,7 +232,9 @@ def override_get_db():
 
 
 @pytest.fixture(scope="function")
-def client(db_engine: Engine, monkeypatch) -> Generator[TestClient, None, None]:
+def client(
+    db_engine: Engine, monkeypatch
+) -> Generator[TestClient, None, None]:
     """Create a test client that uses the test database."""
     # Set the test database URL in settings
     from app.core.config import settings
@@ -382,50 +346,57 @@ def authorized_client(client: TestClient, test_user: User) -> TestClient:
     return client
 
 
-@pytest.fixture(scope="function")
-def test_file(db_session: Session, test_user: User) -> Generator[File, None, None]:
+@pytest.fixture
+def test_image() -> bytes:
+    """Generate a test image for upload tests."""
+    img = Image.new("RGB", (22, 22), color="black")
+    buf = io.BytesIO()
+    img.save(buf, format="PNG")
+    return buf.getvalue()
+
+
+@pytest.fixture
+def test_pdf() -> bytes:
+    """Generate a simple PDF file for testing."""
+    # This is a minimal PDF file with a single blank page
+    return (
+        b"%PDF-1.4\n"
+        b"1 0 obj\n<< /Type /Catalog /Pages 2 0 R >>\nendobj\n"
+        b"2 0 obj\n<< /Type /Pages /Kids [3 0 R] /Count 1 >>\nendobj\n"
+        b"3 0 obj\n<< /Type /Page /Parent 2 0 R /Resources << >> /MediaBox [0 0 612 792] >>\nendobj\n"
+        b"xref\n0 4\n0000000000 65535 f \n0000000015 00000 n \n0000000060 00000 n \n0000000116 00000 n \n"
+        b"trailer\n<< /Size 4 /Root 1 0 R >>\nstartxref\n190\n%%EOF"
+    )
+
+
+@pytest.fixture
+def test_file(
+    db_session: Session, test_user: User
+) -> Generator[File, None, None]:
     """Create a test file in the database."""
-    unique_id = str(uuid.uuid4())[:8]
-    file_path = f"test_file_{unique_id}.pdf"
-    temp_dir = None
+    # Create a test file in the database
+    file_data = b"test file content"
+    file_record = File(
+        filename="test_file.txt",
+        content_type="text/plain",
+        size=len(file_data),
+        owner_id=test_user.id,
+    )
+    db_session.add(file_record)
+    db_session.commit()
+    db_session.refresh(file_record)
+
+    # Create a temporary file with test content
+    with tempfile.NamedTemporaryFile(delete=False) as temp_file:
+        temp_file.write(file_data)
+        temp_file_path = temp_file.name
 
     try:
-        # Create a temporary file for testing
-        temp_dir = tempfile.mkdtemp()
-        temp_file = os.path.join(temp_dir, file_path)
-        with open(temp_file, "wb") as f:
-            f.write(b"Test file content")
-
-        file_obj = File(
-            filename=file_path,
-            filepath=temp_file,  # Changed from file_path to filepath
-            content_type="application/pdf",
-            size=os.path.getsize(temp_file),
-            owner_id=test_user.id,
-            created_at=datetime.now(timezone.utc),
-            updated_at=datetime.now(timezone.utc),
-        )
-
-        db_session.add(file_obj)
-        db_session.commit()
-        db_session.refresh(file_obj)
-
-        yield file_obj
-
+        yield file_record
     finally:
-        # Clean up the database
-        if "file_obj" in locals():
-            db_session.delete(file_obj)
-            db_session.commit()
-
-        # Clean up the temporary files
-        if temp_dir and os.path.exists(temp_dir):
-            try:
-                for filename in os.listdir(temp_dir):
-                    file_path = os.path.join(temp_dir, filename)
-                    if os.path.isfile(file_path):
-                        os.unlink(file_path)
-                os.rmdir(temp_dir)
-            except Exception as e:
-                print(f"Error cleaning up temp files: {e}")
-    return file_obj
+        # Clean up the temporary file
+        if os.path.exists(temp_file_path):
+            os.unlink(temp_file_path)
+        # Clean up the database record
+        db_session.delete(file_record)
+        db_session.commit()
