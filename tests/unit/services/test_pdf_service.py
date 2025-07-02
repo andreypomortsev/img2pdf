@@ -5,12 +5,12 @@ import shutil
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
-import img2pdf
 import pytest
 from PIL import Image
 from pypdf import PdfReader
 from sqlalchemy.orm import Session
 
+import img2pdf
 from app.models.file import File
 
 

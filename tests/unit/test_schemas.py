@@ -126,12 +126,15 @@ def test_token_schema():
     assert token.token_type == "bearer"  # Default value
 
     # Test with all fields provided
-    token_data_full = {"access_token": "test_access_token", "token_type": "custom_type"}
+    token_data_full = {
+        "access_token": "test_access_token",
+        "token_type": "custom_type",
+    }
     token_full = Token(**token_data_full)
 
     assert token_full.access_token == token_data_full["access_token"]
     assert token_full.token_type == token_data_full["token_type"]
-    
+
     # Test model_dump method
     dump_data = token_full.model_dump()
     assert dump_data["access_token"] == token_data_full["access_token"]
@@ -141,7 +144,7 @@ def test_token_schema():
     json_data = token_full.model_dump_json()
     assert "access_token" in json_data
     assert "token_type" in json_data
-    
+
     # Test model_config example
     assert hasattr(Token, "model_config")
     assert "example" in Token.model_config["json_schema_extra"]
