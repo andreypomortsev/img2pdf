@@ -1,5 +1,3 @@
-version: '3.8'
-
 services:
   test:
     build:
@@ -24,27 +22,52 @@ services:
       timeout: 5s
       retries: 5
 
-  # Override the main web service for testing
   web:
+    build:
+      context: .
+      dockerfile: Dockerfile.test
     command: >
       bash -c "
         python -m app.initial_data &&
         uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
       "
     environment:
+      - PYTHONUNBUFFERED=1
       - TESTING=True
       - DATABASE_URL=postgresql://user:password@db/mydatabase_test
+      - CELERY_BROKER_URL=redis://redis:6379/0
+      - CELERY_RESULT_BACKEND=redis://redis:6379/0
+    volumes:
+      - .:/app
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    ports:
+      - "8000:8000"
 
-  # Use the same database but with a different name for tests
   db:
+    image: postgres:16-alpine
     environment:
+      - POSTGRES_USER=user
+      - POSTGRES_PASSWORD=password
       - POSTGRES_DB=mydatabase_test
+    volumes:
+      - postgres_data_test:/var/lib/postgresql/data/
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U user -d mydatabase_test"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
 
-  # Redis and other services can be shared
   redis:
-    image: redis:7-alpine
+    image: redis:8.0.2-alpine
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
       interval: 5s
       timeout: 5s
       retries: 5
+
+volumes:
+  postgres_data_test:
