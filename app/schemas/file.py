@@ -86,7 +86,9 @@ class FileInDBBase(FileBase):
 class File(FileInDBBase):
     """Schema for File model with additional computed properties."""
 
-    url: Optional[HttpUrl] = Field(default=None, description="URL to access the file")
+    url: Optional[HttpUrl] = Field(
+        default=None, description="URL to access the file"
+    )
 
     @model_validator(mode="before")
     @classmethod
