@@ -49,9 +49,11 @@ clean:
 format:
 	black . --line-length 79
 	isort .
+	make clean
 
 test-coverage:
 	pytest tests/unit/ --cov --cov-report=term-missing --cov-report=html
+	make clean
 
 # Show help
 help:
