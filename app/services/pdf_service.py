@@ -9,11 +9,11 @@ import logging
 import os
 from typing import List
 
-import img2pdf
 from fastapi import HTTPException, status
 from pypdf import PdfWriter
 from sqlalchemy.orm import Session
 
+import img2pdf
 from app import crud
 from app.core.config import settings
 from app.interfaces.task_service_interface import TaskServiceInterface
