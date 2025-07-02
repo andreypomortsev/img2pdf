@@ -4,9 +4,10 @@ import io
 from pathlib import Path
 from typing import BinaryIO, List, Union
 
-import img2pdf
 from PIL import Image
 from pypdf import PdfReader, PdfWriter
+
+import img2pdf
 
 
 class PDFGenerator:
