@@ -33,7 +33,7 @@ class TaskService(TaskServiceInterface):
             logger.error(
                 "Failed to convert image to PDF: %s", str(e), exc_info=True
             )
-            raise ServiceError(f"Failed to convert image to PDF: {str(e)}")
+            raise ServiceError(f"Failed to convert image to PDF: {str(e)}") from e
 
     def merge_pdfs(
         self,
@@ -54,7 +54,7 @@ class TaskService(TaskServiceInterface):
             }
         except Exception as e:
             logger.error("Failed to merge PDFs: %s", str(e), exc_info=True)
-            raise ServiceError(f"Failed to merge PDFs: {str(e)}")
+            raise ServiceError(f"Failed to merge PDFs: {str(e)}") from e
 
 
 # Singleton instance
