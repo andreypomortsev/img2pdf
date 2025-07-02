@@ -1,12 +1,33 @@
+"""Celery worker configuration and setup.
+
+This module configures and initializes the Celery application used for
+asynchronous task processing in the application.
+"""
+
+from typing import Any
+
 from celery import Celery
-from celery.signals import setup_logging
+from celery.signals import setup_logging as celery_setup_logging
 
 from app.core.config import settings
+from app.core.logging_config import setup_logging as setup_app_logging
+
+
+def configure_celery_logging(**kwargs: Any) -> None:
+    """Configure Celery logging.
+
+    This function is connected to the Celery setup_logging signal to configure
+    logging when the Celery worker starts.
+
+    Args:
+        **kwargs: Additional keyword arguments (provided by Celery signal)
+    """
+    del kwargs  # Unused
+    setup_app_logging()
 
 
 def create_celery_app() -> Celery:
-    """
-    Create and configure a new Celery application instance.
+    """Create and configure a new Celery application instance.
 
     Returns:
         Celery: Configured Celery application instance
@@ -31,13 +52,7 @@ def create_celery_app() -> Celery:
     )
 
     # Configure logging
-    @setup_logging.connect
-    def setup_celery_logging(**kwargs):
-        from logging.config import dictConfig
-
-        from app.core.logging import get_logging_config
-
-        dictConfig(get_logging_config())
+    celery_setup_logging.connect(configure_celery_logging, weak=False)
 
     return app
 
