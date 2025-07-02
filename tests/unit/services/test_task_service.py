@@ -7,7 +7,7 @@ from sqlalchemy.orm import Session
 
 from app.core.exceptions import ServiceError
 from app.models.file import File
-from app.services.task_service import TaskService, task_service
+from app.services.task_service import task_service
 
 
 class TestTaskService:
