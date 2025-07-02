@@ -11,9 +11,10 @@ from sqlalchemy import Boolean, ForeignKey, Integer, String, Text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.base import Base
+from app.db.mixins import TimestampMixin
 
 
-class File(Base):
+class File(Base, TimestampMixin):
     """Database model for uploaded files.
 
     Attributes:
@@ -23,35 +24,49 @@ class File(Base):
         content_type: MIME type of the file
         size: File size in bytes
         owner_id: Foreign key to the user who uploaded the file
-        created_at: Timestamp when the file was uploaded
-        updated_at: Timestamp when the file was last updated
         is_deleted: Flag indicating if the file is soft-deleted
         deleted_at: Timestamp when the file was soft-deleted
         owner: Relationship to the User model
+
+    Inherited from TimestampMixin:
+        created_at: Timestamp when the file was uploaded
+        updated_at: Timestamp when the file was last updated
     """
 
     __tablename__ = "files"
 
     id: Mapped[int] = mapped_column(primary_key=True, index=True)
-    filename: Mapped[str] = mapped_column(String(255), index=True, nullable=False)
-    filepath: Mapped[str] = mapped_column(Text, nullable=False)
-    content_type: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
-    size: Mapped[Optional[int]] = mapped_column(
-        Integer, nullable=True
-    )  # File size in bytes
-    owner_id: Mapped[int] = mapped_column(
-        ForeignKey("users.id", ondelete="CASCADE"), nullable=False
-    )
-    created_at: Mapped[datetime] = mapped_column(
-        default=lambda: datetime.now(timezone.utc), nullable=False
-    )
-    updated_at: Mapped[datetime] = mapped_column(
-        default=lambda: datetime.now(timezone.utc),
-        onupdate=lambda: datetime.now(timezone.utc),
+    filename: Mapped[str] = mapped_column(
+        String(255),
+        index=True,
         nullable=False,
+        comment="Original filename of the uploaded file",
     )
-    is_deleted: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
-    deleted_at: Mapped[Optional[datetime]] = mapped_column(nullable=True)
+    filepath: Mapped[str] = mapped_column(
+        Text,
+        nullable=False,
+        comment="Filesystem path where the file is stored",
+    )
+    content_type: Mapped[Optional[str]] = mapped_column(
+        String(100), nullable=True, comment="MIME type of the file"
+    )
+    size: Mapped[Optional[int]] = mapped_column(
+        Integer, nullable=True, comment="File size in bytes"
+    )
+    owner_id: Mapped[int] = mapped_column(
+        ForeignKey("users.id", ondelete="CASCADE"),
+        nullable=False,
+        comment="ID of the user who owns this file",
+    )
+    is_deleted: Mapped[bool] = mapped_column(
+        Boolean,
+        default=False,
+        nullable=False,
+        comment="Flag indicating if the file is soft-deleted",
+    )
+    deleted_at: Mapped[Optional[datetime]] = mapped_column(
+        nullable=True, comment="Timestamp when the file was soft-deleted"
+    )
 
     # Relationships
     owner: Mapped["User"] = relationship("User", back_populates="files")
