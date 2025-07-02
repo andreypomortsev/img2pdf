@@ -1,3 +1,9 @@
+"""Pydantic schemas for authentication tokens.
+
+This module defines the data models used for handling JWT tokens in the application,
+including token generation, validation, and response formatting.
+"""
+
 from typing import Optional
 
 from pydantic import BaseModel, ConfigDict, Field

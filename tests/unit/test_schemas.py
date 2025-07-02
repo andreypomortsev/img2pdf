@@ -6,6 +6,7 @@ from pydantic import ValidationError
 from app.schemas.file import File, FileCreate
 from app.schemas.pdf import MergePdfsRequest, MergeTaskResponse
 from app.schemas.tasks import TaskResponse
+from app.schemas.token import Token, TokenData
 
 
 def test_file_schema():
@@ -111,3 +112,53 @@ def test_merge_task_response_schema():
     # Test with missing required field
     with pytest.raises(ValidationError):
         MergeTaskResponse()
+
+
+def test_token_schema():
+    """
+    Tests the Token schema to ensure it correctly validates data.
+    """
+    # Test with minimal required fields
+    token_data = {"access_token": "test_access_token"}
+    token = Token(**token_data)
+
+    assert token.access_token == token_data["access_token"]
+    assert token.token_type == "bearer"  # Default value
+
+    # Test with all fields provided
+    token_data_full = {"access_token": "test_access_token", "token_type": "custom_type"}
+    token_full = Token(**token_data_full)
+
+    assert token_full.access_token == token_data_full["access_token"]
+    assert token_full.token_type == token_data_full["token_type"]
+    
+    # Test model_dump method
+    dump_data = token_full.model_dump()
+    assert dump_data["access_token"] == token_data_full["access_token"]
+    assert dump_data["token_type"] == token_data_full["token_type"]
+
+    # Test model_dump_json method
+    json_data = token_full.model_dump_json()
+    assert "access_token" in json_data
+    assert "token_type" in json_data
+    
+    # Test model_config example
+    assert hasattr(Token, "model_config")
+    assert "example" in Token.model_config["json_schema_extra"]
+    example = Token.model_config["json_schema_extra"]["example"]
+    assert "access_token" in example
+    assert "token_type" in example
+
+
+def test_token_data_schema():
+    """
+    Tests the TokenData schema to ensure it correctly validates data.
+    """
+    # Test with username
+    token_data = {"username": "testuser"}
+    token = TokenData(**token_data)
+    assert token.username == token_data["username"]
+
+    # Test with no username (should be valid as it's optional)
+    token_empty = TokenData()
+    assert token_empty.username is None
