@@ -7,7 +7,7 @@ from app.api import deps
 from app.db.session import get_db
 from app.models.user import User
 from app.schemas.pdf import MergePdfsRequest, MergeTaskResponse
-from app.services.pdf_service import pdf_service
+from app.services import pdf_service
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
