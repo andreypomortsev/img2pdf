@@ -90,7 +90,7 @@ def update_user(
     if isinstance(user_in, dict):
         update_data = user_in
     else:
-        update_data = user_in.dict(exclude_unset=True)
+        update_data = user_in.model_dump(exclude_unset=True)
 
     if "password" in update_data and update_data["password"]:
         hashed_password = get_password_hash(update_data["password"])
