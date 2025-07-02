@@ -10,7 +10,7 @@ from app.db.session import get_db
 from app.models.user import User
 from app.schemas.file import File as FileSchema
 from app.schemas.tasks import TaskResponse
-from app.services.file_service import file_service
+from app.services import file_service
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
@@ -25,8 +25,9 @@ async def upload_image(
     """
     Upload an image file and start conversion to PDF.
 
-    This endpoint is idempotent - uploading the same file multiple times will create
-    separate file entries and conversion tasks, ensuring no side effects from retries.
+    This endpoint is idempotent - uploading the same file multiple times
+    will create separate file entries and conversion tasks, ensuring
+    no side effects from retries.
     """
     return file_service.start_image_conversion(db, file, current_user)
 
@@ -50,10 +51,11 @@ async def get_task_status(
     """
     Check the status of a Celery task.
 
-    This endpoint is idempotent - multiple identical requests will return the same result
-    without any side effects.
+    This endpoint is idempotent - multiple identical requests will return
+    the same result without any side effects.
 
-    Users can only check the status of their own tasks. Superusers can check any task.
+    Users can only check the status of their own tasks.
+    Superusers can check any task.
     """
     return file_service.get_task_status(task_id, db, current_user)
 
@@ -78,8 +80,8 @@ async def download_file(
     """
     Download a file.
 
-    This endpoint is idempotent - multiple identical requests will return the same file
-    without any side effects.
+    This endpoint is idempotent - multiple identical requests will return
+    the same file without any side effects.
 
     Users can only download their own files. Superusers can download any file.
     """
@@ -110,8 +112,8 @@ async def list_files(
     """
     List all files for the current user.
 
-    This endpoint is idempotent - multiple identical requests will return the same
-    list of files without any side effects.
+    This endpoint is idempotent - multiple identical requests will return
+    the same list of files without any side effects.
 
     Regular users see only their own files. Superusers see all files.
     """
