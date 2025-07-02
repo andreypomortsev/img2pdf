@@ -1,64 +1,88 @@
 """
 Celery tasks for background processing.
 
-This module contains task definitions that interface with the Celery worker.
-Business logic is implemented in the service layer.
+These tasks act as stateless wrappers over the service layer logic.
 """
 
 import logging
 from typing import Any, Dict, List
 
-from app.db.session import get_db
+from celery.app.task import Task
+from celery.exceptions import MaxRetriesExceededError
+
+from app.core.exceptions import ServiceError
+from app.services.task_executor import TaskExecutorService
+from app.services.task_service import task_service
 from app.worker import celery_app
 
 logger = logging.getLogger(__name__)
 
 
-def _execute_with_db_retry(task_instance, operation_name, operation_func, *args, **kwargs):
-    """
-    Execute a database operation with retry logic.
+def _handle_task_failure(
+    task: Task, exc: Exception, operation_name: str
+) -> Dict[str, Any]:
+    """Handle task failure with appropriate logging and retry logic."""
+    retries = task.request.retries
+    max_retries = task.max_retries or 3
 
-    Args:
-        task_instance: The Celery task instance
-        operation_name: Name of the operation for logging
-        operation_func: Function to execute
-        *args: Positional arguments to pass to the operation function
-        **kwargs: Keyword arguments to pass to the operation function
+    if isinstance(exc, ServiceError):
+        # Business logic errors should not be retried
+        logger.error("Service error in %s: %s", operation_name, str(exc))
+        return {
+            "status": "error",
+            "error": str(exc),
+            "retries": retries,
+            "max_retries": max_retries,
+        }
 
-    Returns:
-        The result of the operation function
-
-    Raises:
-        self.retry: If the operation fails and should be retried
-    """
-    db = next(get_db())
-    try:
-        logger.info("Starting %s", operation_name)
-        result = operation_func(db, *args, **kwargs)
-        logger.info("Completed %s successfully", operation_name)
-        return result
-    except Exception as exc:
-        logger.error(
-            "Error during %s: %s",
+    if retries < max_retries:
+        # Calculate backoff time with jitter
+        countdown = min(60 * (retries + 1), 300)  # Max 5 min delay
+        logger.warning(
+            "Retrying %s (attempt %d/%d) in %ds: %s",
             operation_name,
+            retries + 1,
+            max_retries,
+            countdown,
             str(exc),
-            exc_info=True,
         )
-        # Retry with exponential backoff
-        raise task_instance.retry(exc=exc, countdown=60 * task_instance.request.retries)
-    finally:
-        db.close()
+        try:
+            raise task.retry(exc=exc, countdown=countdown)
+        except MaxRetriesExceededError:
+            logger.error(
+                "Max retries (%d) exceeded for %s", max_retries, operation_name
+            )
+
+    # If we get here, we've exceeded max retries
+    logger.error(
+        "Task %s failed after %d retries: %s",
+        operation_name,
+        retries,
+        str(exc),
+        exc_info=True,
+    )
+    return {
+        "status": "error",
+        "error": f"Failed after {retries} retries: {str(exc)}",
+        "retries": retries,
+        "max_retries": max_retries,
+    }
 
 
 @celery_app.task(
     bind=True,
     name="convert_image_to_pdf",
     max_retries=3,
-    default_retry_delay=60,  # 1 minute
-    soft_time_limit=300,  # 5 minutes
-    time_limit=330,  # 5.5 minutes (must be > soft_time_limit)
+    default_retry_delay=60,
+    soft_time_limit=300,
+    time_limit=330,
+    autoretry_for=(Exception,),
+    retry_backoff=True,
+    retry_jitter=True,
 )
-def convert_image_to_pdf(self, file_id: int, owner_id: int) -> Dict[str, Any]:
+def convert_image_to_pdf(
+    self: Task, file_id: int, owner_id: int
+) -> Dict[str, Any]:
     """
     Celery task to convert an image file to PDF.
 
@@ -67,68 +91,63 @@ def convert_image_to_pdf(self, file_id: int, owner_id: int) -> Dict[str, Any]:
         owner_id: ID of the user who owns the file
 
     Returns:
-        dict: Status and result of the conversion
+        Dict containing status, file_id, and file_path on success
     """
-    from app.services.pdf_service import pdf_service
+    operation_name = f"Image to PDF conversion for file ID {file_id}"
+    logger.info("Starting %s", operation_name)
 
-    def _convert_image(db):
-        pdf_file = pdf_service.convert_image_to_pdf(db, file_id, owner_id)
-        return {
-            "status": "success",
-            "file_id": pdf_file.id,
-            "file_path": pdf_file.filepath,
-        }
-
-    return _execute_with_db_retry(
-        self,
-        f"image to PDF conversion for file id {file_id}",
-        _convert_image
-    )
+    try:
+        return TaskExecutorService.execute_with_retry(
+            self,
+            operation_name=operation_name,
+            operation_func=task_service.convert_image_to_pdf,
+            file_id=file_id,
+            owner_id=owner_id,
+        )
+    except Exception as exc:
+        return _handle_task_failure(self, exc, operation_name)
 
 
 @celery_app.task(
     bind=True,
     name="merge_pdfs",
     max_retries=3,
-    default_retry_delay=60,  # 1 minute
-    soft_time_limit=600,  # 10 minutes
-    time_limit=630,  # 10.5 minutes (must be > soft_time_limit)
+    default_retry_delay=60,
+    soft_time_limit=600,
+    time_limit=630,
     autoretry_for=(Exception,),
     retry_backoff=True,
-    retry_backoff_max=300,  # 5 minutes max backoff
+    retry_backoff_max=300,
     retry_jitter=True,
 )
 def merge_pdfs(
-    self, file_ids: List[int], output_filename: str, owner_id: int
+    self: Task, file_ids: List[int], output_filename: str, owner_id: int
 ) -> Dict[str, Any]:
     """
     Celery task to merge multiple PDFs into a single PDF.
 
     Args:
         file_ids: List of file IDs to merge
-        output_filename: Name of the output PDF file
+        output_filename: Name for the merged PDF file
         owner_id: ID of the user who owns the files
 
     Returns:
-        dict: Status and result of the merge operation
+        Dict containing status, file_id, and file_path on success
     """
-    from app.services.pdf_service import pdf_service
+    operation_name = f"Merge PDFs {file_ids} into {output_filename}"
+    logger.info("Starting %s", operation_name)
 
-    def _merge_pdfs(db):
-        merged_file = pdf_service.merge_pdfs(
-            db, file_ids, output_filename, owner_id
+    try:
+        return TaskExecutorService.execute_with_retry(
+            self,
+            operation_name=operation_name,
+            operation_func=task_service.merge_pdfs,
+            file_ids=file_ids,
+            output_filename=output_filename,
+            owner_id=owner_id,
         )
-        return {
-            "status": "success",
-            "file_id": merged_file.id,
-            "file_path": merged_file.filepath,
-        }
-
-    return _execute_with_db_retry(
-        self,
-        f"PDF merge for files {file_ids} into {output_filename}",
-        _merge_pdfs
-    )
+    except Exception as exc:
+        return _handle_task_failure(self, exc, operation_name)
 
 
 @celery_app.task(name="test_task")
@@ -137,7 +156,7 @@ def test_task() -> str:
     A simple test task to verify Celery worker is running.
 
     Returns:
-        str: Test message
+        Status message
     """
     logger.info("Test task executed")
     return "Test task completed successfully"
