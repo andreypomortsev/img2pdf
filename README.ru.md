@@ -36,8 +36,8 @@
 
 1.  **Клонируйте репозиторий:**
     ```bash
-    git clone https://github.com/andreypomortsev/imgtopdf.git
-    cd imgtopdf
+    git clone https://github.com/andreypomortsev/img2pdf.git
+    cd img2pdf
     ```
 
 2.  **Соберите и запустите сервисы:**

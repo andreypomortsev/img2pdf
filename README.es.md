@@ -36,8 +36,8 @@ Un servicio web seguro que convierte imágenes a archivos PDF y fusiona múltipl
 
 1.  **Clona el repositorio:**
     ```bash
-    git clone https://github.com/andreypomortsev/imgtopdf.git
-    cd imgtopdf
+    git clone https://github.com/andreypomortsev/img2pdf.git
+    cd img2pdf
     ```
 
 2.  **Construye y ejecuta los servicios:**
